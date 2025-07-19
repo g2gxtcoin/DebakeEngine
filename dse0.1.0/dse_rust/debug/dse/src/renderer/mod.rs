@@ -679,7 +679,7 @@ pub mod env {
             match pipe_type {
                 RenderPipelineType::None => todo!(),
                 RenderPipelineType::Graphic => tin
-                    .exe_data_mut(self.renderer_attachment.index_pipeline_task)
+                    .get_data_mut(self.renderer_attachment.index_pipeline_task)
                     .unwrap()
                     .push_task(RendererTask::CreateGraphicPipelineLayout(
                         Self::_callback_create_pipeline_layout,
@@ -690,7 +690,7 @@ pub mod env {
         }
 
         pub fn create_graphic_pipeline_pass(&self, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.exe_data_mut(self.renderer_attachment.index_pipeline_task)
+            tin.get_data_mut(self.renderer_attachment.index_pipeline_task)
                 .unwrap()
                 .push_task(RendererTask::CreateGraphicPipelinePass(
                     Self::_callback_create_graphic_pipeline_pass,
@@ -698,7 +698,7 @@ pub mod env {
         }
 
         pub fn create_graphic_pipeline(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.exe_data_mut(self.renderer_attachment.index_pipeline_task)
+            tin.get_data_mut(self.renderer_attachment.index_pipeline_task)
                 .unwrap()
                 .push_task(RendererTask::CreateGraphicPipeline(
                     Self::_callback_create_graphic_pipeline,
@@ -714,7 +714,7 @@ pub mod env {
         ) {
             //judge inherit task queue offset
 
-            tin.exe_data_mut(self.renderer_attachment.index_cmd_task)
+            tin.get_data_mut(self.renderer_attachment.index_cmd_task)
                 .unwrap()
                 .push_task(RendererTask::PushCmdBuffer(
                     cmd_index,
@@ -729,7 +729,7 @@ pub mod env {
             priority: i32,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            tin.exe_data_mut(self.renderer_attachment.index_surface_task)
+            tin.get_data_mut(self.renderer_attachment.index_surface_task)
                 .unwrap()
                 .push_task(RendererTask::CreateSurfaceColorImg(
                     surf_img_index,
@@ -744,7 +744,7 @@ pub mod env {
             usage: SurfaceIMGUsage,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            tin.exe_data_mut(self.renderer_attachment.index_surface_task)
+            tin.get_data_mut(self.renderer_attachment.index_surface_task)
                 .unwrap()
                 .push_task(RendererTask::CreateSurfaceImg(
                     surf_img_index,
@@ -754,7 +754,7 @@ pub mod env {
         }
 
         pub fn create_shader_module(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.exe_data_mut(self.renderer_attachment.index_shader_mod_task)
+            tin.get_data_mut(self.renderer_attachment.index_shader_mod_task)
                 .unwrap()
                 .push_task(RendererTask::CreateShaderMoudule(
                     Self::_callback_create_shader_moudule,
@@ -766,13 +766,13 @@ pub mod env {
         // 交换链
         //
         pub fn create_vbo(&mut self, api_in:&mut VkAshAPID,tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.exe_data_mut(self.renderer_attachment.index_vbo_task)
+            tin.get_data_mut(self.renderer_attachment.index_vbo_task)
                 .unwrap()
                 .push_task(RendererTask::CreateVBO(Self::_callback_create_vbo));
         }
 
         pub fn update_vbo(&mut self, mesh_index: usize, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.exe_data_mut(self.renderer_attachment.index_vbo_task)
+            tin.get_data_mut(self.renderer_attachment.index_vbo_task)
                 .unwrap()
                 .push_task(RendererTask::UpdateVBO(
                     mesh_index,
@@ -821,7 +821,6 @@ pub mod env {
                     vk::BufferUsageFlags::VERTEX_BUFFER,
                     *api_bind.gpu_mem_properties_current_ref().unwrap()
                 );
-                todo!();
             }
 
             // let buffer = unsafe {
@@ -841,7 +840,7 @@ pub mod env {
         // 交换链
         //
         pub fn create_fbo(&self, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.exe_data_mut(self.renderer_attachment.index_fbo_task)
+            tin.get_data_mut(self.renderer_attachment.index_fbo_task)
                 .unwrap()
                 .push_task(RendererTask::CreateFBO(Self::_callback_create_fbo))
         }
@@ -952,7 +951,7 @@ pub mod env {
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             let mut _tasks = tin
-                .exe_data_mut(self.renderer_attachment.index_vbo_task)
+                .get_data_mut(self.renderer_attachment.index_vbo_task)
                 .unwrap();
             _tasks.begin_execute();
             for ti in _tasks.task_iter_mut().unwrap() {
@@ -984,7 +983,7 @@ pub mod env {
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             let mut _tasks = tin
-                .exe_data_mut(self.renderer_attachment.index_fbo_task)
+                .get_data_mut(self.renderer_attachment.index_fbo_task)
                 .unwrap();
             _tasks.begin_execute();
             for ti in _tasks.task_iter_mut().unwrap() {
@@ -1004,7 +1003,7 @@ pub mod env {
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             let mut _task = tin
-                .exe_data_mut(self.renderer_attachment.index_shader_mod_task)
+                .get_data_mut(self.renderer_attachment.index_shader_mod_task)
                 .unwrap();
             _task.begin_execute();
             for ti in _task.task_iter_mut().unwrap() {
@@ -1023,7 +1022,7 @@ pub mod env {
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             let mut _tasks = tin
-                .exe_data_mut(self.renderer_attachment.index_surface_task)
+                .get_data_mut(self.renderer_attachment.index_surface_task)
                 .unwrap();
             _tasks.begin_execute();
             // let self_rc=Rc::new(RefCell::new(self)) ;
@@ -1064,7 +1063,7 @@ pub mod env {
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             let mut _tasks = tin
-                .exe_data_mut(self.renderer_attachment.index_cmd_task)
+                .get_data_mut(self.renderer_attachment.index_cmd_task)
                 .unwrap();
             _tasks.begin_execute();
             for ti in _tasks.task_iter_mut().unwrap() {
@@ -1088,7 +1087,7 @@ pub mod env {
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             let mut _task = tin
-                .exe_data_mut(self.renderer_attachment.index_pipeline_task)
+                .get_data_mut(self.renderer_attachment.index_pipeline_task)
                 .unwrap();
             _task.begin_execute();
             for ti in _task.task_iter_mut().unwrap() {

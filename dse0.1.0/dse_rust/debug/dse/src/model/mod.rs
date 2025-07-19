@@ -11,6 +11,52 @@ pub mod transform;
 ///                                 ///
 ///////////////////////////////////////
 
+#[cfg(feature = "config_MODEL_MAX_ATTECHMENT_NUM_64")]
+pub static MODEL_MAX_ATTECHMENT_NUM: usize = 64;
+#[cfg(feature = "config_MODEL_MAX_ATTECHMENT_NUM_32")]
+pub static MODEL_MAX_ATTECHMENT_NUM: usize = 32;
+#[cfg(feature = "config_MODEL_MAX_ATTECHMENT_NUM_16")]
+pub static MODEL_MAX_ATTECHMENT_NUM: usize = 16;
+#[cfg(feature = "config_MODEL_MAX_ATTECHMENT_NUM_8")]
+pub static MODEL_MAX_ATTECHMENT_NUM: usize = 8;
+
+// 该模块静态序列化模块
+// 主要用于将 main下 tak exe dat buf 四大基本模块中子变量
+// 等标序到运行内存中
+// ！！！！！！临时模块，测试使用，因改变频繁,后续将使用静态宏完成！！！！！
+// todo!();
+#[allow(unused)]
+pub mod global {
+    // exe model type id
+    pub const MTID_EXE_TIMER: u64 = 0;
+    pub const MTID_EXE_WIN_INPUT: u64 = 1;
+    pub const MTID_EXE_INPUT: u64 = 2;
+    pub const MTID_EXE_WIN_WINDOW: u64 = 3;
+    pub const MTID_EXE_RESOURCE_LOADER: u64 = 4;
+    pub const MTID_EXE_SHADER_DECODER: u64 = 5;
+    pub const MTID_EXE_MODEL: u64 = 6;
+    pub const MTID_EXE_RENDERER1: u64 = 7;
+    pub const MTID_EXE_RENDER_CMD: u64 = 8;
+
+    // dat  model type id
+    pub const MTID_DAT_APPLICATION: u64 = 0;
+    pub const MTID_DAT_VK_API: u64 = 1;
+    pub const MTID_DAT_GRAPHIC_RENDERER_PIPELINE: u64 = 2;
+    pub const MTID_DAT_CMD_BUFFER: u64 = 3;
+    pub const MTID_DAT_FBO: u64 = 4;
+    pub const MTID_DAT_VBO: u64 = 5;
+    pub const MTID_DAT_SURFACE_IMG: u64 = 6;
+    pub const MTID_DAT_SHADER_MOD: u64 = 7;
+    pub const MTID_DAT_MODEL: u64 = 8;
+    pub const MTID_DAT_TRANSFORM: u64 = 9;
+    pub const MTID_DAT_MESH: u64 = 10;
+
+    // tak model type id
+    pub const MTID_TAK_RENDER_TASK: u64 = 0;
+    pub const MTID_TAK_DECODER_TASK: u64 = 1;
+    pub const MTID_TAK_RENDERCMD_TASK: u64 = 2;
+}
+
 #[cfg(feature = "graphic_api_vulkan_1_3")]
 #[cfg(feature = "env_os_win10")]
 #[cfg(feature = "env_bit_64bit")]
@@ -18,13 +64,11 @@ pub mod transform;
 #[cfg(feature = "config_ENGINE_VERTEX_BUFFER_FLOAT_true")]
 pub mod env {
     use crate::{
+        dev_stop,
         manager::{
             self,
             datum::{self, env::Datum},
-            execute::{
-                env::TaskQueue,
-                template::call_back_template::{Callback0MR0R, Callback0MR10R},
-            },
+            execute::{env::TaskQueue, template::call_back_template::Callback0MR0R},
         },
         node::env::{NodeD, NodeT},
     };
@@ -46,6 +90,17 @@ pub mod env {
     #[repr(C, align(8))]
     pub struct ModelExeAttachment {
         index_transform_task: u64,
+    }
+
+    #[repr(C, align(8))]
+    pub struct ModelAttachment {
+        attechments_index_buffer: [(u64, usize); super::MODEL_MAX_ATTECHMENT_NUM],
+        index_child_offset: usize,
+        index_offset: usize,
+
+        switch_transform_update: bool,
+
+        is_active: bool,
     }
 
     #[derive(Default)]
@@ -82,10 +137,12 @@ pub mod env {
         ) {
             let mut _node_index_array = Vec::<u64>::default();
             let mut _parent_count: usize = 0;
-            // check if need change
+            // check if need change transform
+            // if yes, then update global transform
+            // if no, then do nothing
             for mi in datum_model.iter_mut() {
-                if mi.as_mut().unwrap().attachment.is_transform_update {
-                    mi.as_mut().unwrap().attachment.is_transform_update = false;
+                if mi.as_mut().unwrap().attachment.switch_transform_update {
+                    mi.as_mut().unwrap().attachment.switch_transform_update = false;
                     _node_index_array.push(mi.as_mut().unwrap().node_ref().index_self);
 
                     _parent_count = _parent_count + 1;
@@ -122,27 +179,6 @@ pub mod env {
     }
 
     #[repr(C, align(8))]
-    pub struct ModelAttachment {
-        index_mesh: u64,
-        index_transform: u64,
-        index_textures: Vec<u64>,
-        is_transform_update: bool,
-        is_active: bool,
-    }
-
-    impl Default for ModelAttachment {
-        fn default() -> Self {
-            Self {
-                index_mesh: u64::MAX,
-                index_transform: u64::MAX,
-                index_textures: Default::default(),
-                is_active: true,
-                is_transform_update: true,
-            }
-        }
-    }
-
-    #[repr(C, align(8))]
     pub struct ModelD {
         //node_option
         attachment: ModelAttachment,
@@ -163,14 +199,107 @@ pub mod env {
             return self;
         }
 
-        pub fn set_transform(&mut self, index_in: u64) {
-            self.attachment.index_transform = index_in;
+        /// record attachment
+        /// attechment_type: u64, index_in: usize
+        /// 绑定附件类型和索引
+        /// 该函数不建议用于绑定子模型
+        pub fn bind_attechment(&mut self, attechment_type: u64, index_in: usize) {
+            if self.attachment.index_offset < super::MODEL_MAX_ATTECHMENT_NUM {
+                self.attachment.attechments_index_buffer[self.attachment.index_offset] =
+                    (attechment_type, index_in);
+                self.attachment.index_offset = self.attachment.index_offset + 1;
+            } else {
+                crate::send2logger_dev!(
+                    crate::log::code::TYPE_DAT_ERROR
+                        | crate::log::code::CONDI_NUM_OVERFLOW
+                        | crate::log::code::FILE_MODEL
+                        | crate::log::LogCodeD::new()
+                            .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                            .get_code()
+                        | crate::log::LogCodeD::new()
+                            .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_DAT_ID)
+                            .get_code()
+                )
+            }
         }
-        pub fn set_mesh(&mut self, index_in: u64) {
-            self.attachment.index_mesh = index_in;
+
+        /// 该函数用于绑定子模型
+        pub fn bind_child(&mut self, index_in: usize) {
+            if self.attachment.index_offset < super::MODEL_MAX_ATTECHMENT_NUM {
+                self.attachment.attechments_index_buffer.swap(
+                    self.attachment.index_offset,
+                    self.attachment.index_child_offset,
+                );
+                self.attachment.attechments_index_buffer[self.attachment.index_child_offset] =
+                    (super::global::MTID_DAT_MODEL, index_in);
+
+                self.attachment.index_child_offset = self.attachment.index_child_offset + 1;
+                self.attachment.index_offset = self.attachment.index_offset + 1;
+            } else {
+                crate::send2logger_dev!(
+                    crate::log::code::TYPE_DAT_ERROR
+                        | crate::log::code::CONDI_NUM_OVERFLOW
+                        | crate::log::code::FILE_MODEL
+                        | crate::log::LogCodeD::new()
+                            .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                            .get_code()
+                        | crate::log::LogCodeD::new()
+                            .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_DAT_ID)
+                            .get_code()
+                )
+            }
         }
-        pub fn set_tex(&mut self, index_in: u64) {
-            self.attachment.index_textures.push(index_in);
+
+        pub fn get_child_index_slice_ref(&self) -> &[(u64, usize)] {
+            let _r =
+                &self.attachment.attechments_index_buffer[0..self.attachment.index_child_offset];
+            return _r;
+        }
+
+        /// 后进先出
+        /// 寻找第一个符合条件的附件
+        pub fn get_attechment_index(&self, attechment_type: u64) -> Result<usize, ()> {
+            let _r = self
+                .attachment
+                .attechments_index_buffer
+                .iter()
+                .find(|&&ti| ti.0 == attechment_type)
+                .unwrap_or({
+                    return Err(crate::send2logger_dev!(
+                        crate::log::code::TYPE_DAT_ERROR
+                            | crate::log::code::CONDI_OPTION_NONE
+                            | crate::log::code::FILE_MODEL
+                            | crate::log::LogCodeD::new()
+                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                                .get_code()
+                            | crate::log::LogCodeD::new()
+                                .encode(
+                                    self.id as u128,
+                                    crate::log::LogPartFlag::LOGGER_PART_DAT_ID
+                                )
+                                .get_code()
+                    ));
+                })
+                .1;
+            return Ok(_r);
+        }
+
+        /// 寻找第所有符合条件的附件 并组装为一个Vec
+        pub fn get_attechment_index_vec(&self, attechment_type: u64) -> Result<Vec<usize>, ()> {
+            let _r: Vec<usize> = self
+                .attachment
+                .attechments_index_buffer
+                .iter()
+                .filter_map(|ain| {
+                    if ain.0 == attechment_type {
+                        Some(ain.1)
+                    } else {
+                        Option::None
+                    }
+                })
+                .collect();
+
+            return Ok(_r);
         }
     }
 
@@ -181,6 +310,18 @@ pub mod env {
 
         fn node_mut(self: &mut Self) -> &mut NodeD {
             return &mut self.node;
+        }
+    }
+
+    impl Default for ModelAttachment {
+        fn default() -> Self {
+            Self {
+                attechments_index_buffer: [(u64::MAX, usize::MAX); super::MODEL_MAX_ATTECHMENT_NUM],
+                index_child_offset: 0,
+                index_offset: 0,
+                is_active: true,
+                switch_transform_update: false,
+            }
         }
     }
 

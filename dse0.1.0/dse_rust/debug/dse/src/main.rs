@@ -183,7 +183,7 @@ fn main() -> std::io::Result<()> {
         .alloc_data(Default::default(), Some(exe.renderer1.id))
         .end();
     exe.renderer1
-        .link_task_queue(tak.render_task.exe_data_mut(exe.renderer1.id).unwrap());
+        .link_task_queue(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -247,18 +247,18 @@ fn main() -> std::io::Result<()> {
     for sbi in buf.shader_binary_code.consume_all().iter() {
         let _r = ShaderModuleD::build().build_source(sbi.clone());
         dat.shader_mod
-            .exe_data_mut(exe.renderer1.id)
+            .get_data_mut(exe.renderer1.id)
             .unwrap()
             .alloc_data(_r, Option::None)
             .end()
     }
 
     exe.renderer1
-        .create_shader_module(tak.render_task.exe_data_mut(exe.renderer1.id).unwrap());
+        .create_shader_module(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
 
     exe.renderer1.exe_shader_module(
-        dat.shader_mod.exe_data_mut(exe.renderer1.id).unwrap(),
-        tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        dat.shader_mod.get_data_mut(exe.renderer1.id).unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     ////////////////////////////////////////////////////////
@@ -274,22 +274,6 @@ fn main() -> std::io::Result<()> {
         .alloc_data(Default::default(), Some(exe.model.id))
         .end();
 
-    // 创建一个测试使用的2D网格
-    // 这个网格将会被用来渲染一个简单的2D 四边形
-    let _test_mesh = MeshD::build().build_default_2D_spirit();
-    dat.mesh
-        .exe_data_mut(exe.model.id)
-        .unwrap()
-        .alloc_data(_test_mesh, Some(0))
-        .end();
-
-    // 创建一个测试使用的变换向量
-    let _test_trans = TransformD::default();
-    dat.transform
-        .exe_data_mut(exe.model.id)
-        .unwrap()
-        .alloc_data(_test_trans, Option::None)
-        .end();
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -301,12 +285,33 @@ fn main() -> std::io::Result<()> {
         .alloc_data(Default::default(), Some(exe.model.id))
         .end();
 
+    // 创建一个测试使用的模型
     let mut _test_model: ModelD = ModelD::build();
-    _test_model.set_mesh(0);
-    _test_model.set_transform(0);
+
+    
+    // 创建一个测试使用的2D网格
+    // 这个网格将会被用来渲染一个简单的2D 四边形
+    let _test_mesh = MeshD::build().build_default_2D_spirit();
+    dat.mesh
+        .get_data_mut(exe.model.id)
+        .unwrap()
+        .alloc_data(_test_mesh, Option::None)
+        .end();
+
+    // 创建一个测试使用的变换向量
+    let _test_trans = TransformD::default();
+    dat.transform
+        .get_data_mut(exe.model.id)
+        .unwrap()
+        .alloc_data(_test_trans, Option::None)
+        .end();
+    
+    // 将网格和变换向量绑定到模型上
+    _test_model.bind_attechment(model::global::MTID_DAT_MESH,0);
+    _test_model.bind_attechment(model::global::MTID_DAT_TRANSFORM, 0);
 
     dat.model
-        .exe_data_mut(exe.model.id)
+        .get_data_mut(exe.model.id)
         .unwrap()
         .alloc_data(_test_model, Option::None)
         .end();
@@ -324,21 +329,21 @@ fn main() -> std::io::Result<()> {
     // );
 
     exe.renderer1.create_custom_surface_img_view(
-        dat.surface_img.exe_data_index(exe.renderer1.id).unwrap(),
+        dat.surface_img.get_data_index(exe.renderer1.id).unwrap(),
         SurfaceIMGUsage::Storage(PreTypeSurfaceIMG::DefaultColor),
-        tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     exe.renderer1.create_custom_surface_img_view(
-        dat.surface_img.exe_data_index(exe.renderer1.id).unwrap(),
+        dat.surface_img.get_data_index(exe.renderer1.id).unwrap(),
         SurfaceIMGUsage::Storage(PreTypeSurfaceIMG::DefaultDepth),
-        tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     exe.renderer1.exe_surface_img(
-        dat.surface_img.exe_data_mut(exe.renderer1.id).unwrap(),
+        dat.surface_img.get_data_mut(exe.renderer1.id).unwrap(),
         &mut dat.vk_api,
-        &mut tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        &mut tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     ////////////////////////////////////////////////////////
@@ -355,37 +360,37 @@ fn main() -> std::io::Result<()> {
         .build_layout_info(renderer::cfg::env::PSO::DEFAULT_LAYOUT)
         .build_render_pass(renderer::cfg::env::PSO::DEFAULT_RENDER_PASS)
         .build_push_subpass(renderer::cfg::env::PSO::DEFAULT_SUBPASS_DESCRIPTION)
-        .build_push_shader_stages(dat.shader_mod.exe_data_mut(exe.renderer1.id).unwrap());
+        .build_push_shader_stages(dat.shader_mod.get_data_mut(exe.renderer1.id).unwrap());
 
     dat.graphic_renderer_pipeline
-        .exe_data_mut(exe.renderer1.id)
+        .get_data_mut(exe.renderer1.id)
         .unwrap()
         .alloc_data(_pipeline, Option::None)
         .end();
 
     exe.renderer1.create_pipeline_layout(
         RenderPipelineType::Graphic,
-        tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     exe.renderer1
-        .create_graphic_pipeline_pass(tak.render_task.exe_data_mut(exe.renderer1.id).unwrap());
+        .create_graphic_pipeline_pass(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
 
     exe.renderer1.exe_graphic_pipeline(
         dat.graphic_renderer_pipeline
-            .exe_data_mut(exe.renderer1.id)
+            .get_data_mut(exe.renderer1.id)
             .unwrap(),
-        tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     exe.renderer1
-        .create_graphic_pipeline(tak.render_task.exe_data_mut(exe.renderer1.id).unwrap());
+        .create_graphic_pipeline(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
 
     exe.renderer1.exe_graphic_pipeline(
         dat.graphic_renderer_pipeline
-            .exe_data_mut(exe.renderer1.id)
+            .get_data_mut(exe.renderer1.id)
             .unwrap(),
-        tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     buf.shader_binary_code.release_buffer();
@@ -400,49 +405,47 @@ fn main() -> std::io::Result<()> {
 
     // FBO
     exe.renderer1
-        .create_fbo(tak.render_task.exe_data_mut(exe.renderer1.id).unwrap());
+        .create_fbo(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
 
     exe.renderer1.exe_fbo(
-        dat.fbo.exe_data_mut(exe.renderer1.id).unwrap(),
-        dat.surface_img.exe_data_mut(exe.renderer1.id).unwrap(),
+        dat.fbo.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.surface_img.get_data_mut(exe.renderer1.id).unwrap(),
         dat.graphic_renderer_pipeline
-            .exe_data_mut(exe.renderer1.id)
+            .get_data_mut(exe.renderer1.id)
             .unwrap(),
-        tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
     // CBO
     exe.renderer1.create_cmd_buffer(
-        dat.surface_img.exe_data_index(exe.renderer1.id).unwrap(),
+        dat.surface_img.get_data_index(exe.renderer1.id).unwrap(),
         vk::CommandBufferLevel::PRIMARY.as_raw(),
-        tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     // VBO
     //todo!();
     exe.renderer1.create_vbo(
         &mut dat.vk_api,
-        tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
 
-    dev_stop!();
+    //dev_stop!();
 
     exe.renderer1.exe_vbo(
-        dat.vbo.exe_data_mut(exe.renderer1.id).unwrap(),
-        dat.mesh.exe_data_mut(0).unwrap(),
+        dat.vbo.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.mesh.get_data_mut(0).unwrap(),
         dat.graphic_renderer_pipeline
-            .exe_data_mut(exe.renderer1.id)
+            .get_data_mut(exe.renderer1.id)
             .unwrap(),
         &dat.vk_api,
-        &mut tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        &mut tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     exe.renderer1.exe_cmdbuffer(
-        dat.cmd_buffer.exe_data_mut(exe.renderer1.id).unwrap(),
-        &mut tak.render_task.exe_data_mut(exe.renderer1.id).unwrap(),
+        dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap(),
+        &mut tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
-
-    dev_stop!();
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -453,12 +456,12 @@ fn main() -> std::io::Result<()> {
     exe.render_cmd.link_renderer(&exe.renderer1);
 
     exe.render_cmd
-        .begin_cmd_sync(dat.cmd_buffer.exe_data_ref(exe.renderer1.id).unwrap(), 0);
+        .begin_cmd_sync(dat.cmd_buffer.get_data_ref(exe.renderer1.id).unwrap(), 0);
 
     exe.render_cmd.bind_pipe_sync(
-        dat.cmd_buffer.exe_data_mut(exe.renderer1.id).unwrap(),
+        dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap(),
         dat.graphic_renderer_pipeline
-            .exe_data_mut(exe.renderer1.id)
+            .get_data_mut(exe.renderer1.id)
             .unwrap(),
         0,
         0,
@@ -472,20 +475,20 @@ fn main() -> std::io::Result<()> {
         0,
         0,
         dat.graphic_renderer_pipeline
-            .exe_data_mut(exe.renderer1.id)
+            .get_data_mut(exe.renderer1.id)
             .unwrap(),
-        dat.cmd_buffer.exe_data_mut(exe.renderer1.id).unwrap(),
-        dat.fbo.exe_data_mut(exe.renderer1.id).unwrap(),
+        dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.fbo.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     exe.render_cmd
-        .draw_sync(dat.cmd_buffer.exe_data_mut(exe.renderer1.id).unwrap());
+        .draw_sync(dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap());
 
     exe.render_cmd
-        .end_render_pass_sync(0, dat.cmd_buffer.exe_data_mut(exe.renderer1.id).unwrap());
+        .end_render_pass_sync(0, dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap());
 
     // 记得重新开回来
-    //dev_stop!();
+    dev_stop!();
 
     ////////////////////////////////////////////////////////
     ////                                                ////

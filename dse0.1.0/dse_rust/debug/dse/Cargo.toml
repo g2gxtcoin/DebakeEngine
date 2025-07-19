@@ -47,6 +47,7 @@ config = [
     "config_INPUT_BUFFER_DIM_NUM",
     "config_UNIFORM_INPUT_BUFFER_CLEAR_COUNT_PER_FRAME",
     "config_SOURCE_SHADER_TYPE",
+    "config_MODEL",
 ]
 
 debake=["debake_dev"]
@@ -245,6 +246,16 @@ config_INPUT_BUFFER_DIM_NUM_4=[]
 
 config_UNIFORM_INPUT_BUFFER_CLEAR_COUNT_PER_FRAME=["config_UNIFORM_INPUT_BUFFER_CLEAR_COUNT_PER_FRAME_0"]
 config_UNIFORM_INPUT_BUFFER_CLEAR_COUNT_PER_FRAME_0=[]
+
+config_MODEL = ["config_MODEL_MAX_ATTECHMENT_NUM_64"]
+config_MODEL_MAX_ATTECHMENT_NUM =["config_MODEL_MAX_ATTECHMENT_NUM_64"]
+config_MODEL_MAX_ATTECHMENT_NUM_64 = []
+config_MODEL_MAX_ATTECHMENT_NUM_32 = []
+config_MODEL_MAX_ATTECHMENT_NUM_16 = []
+config_MODEL_MAX_ATTECHMENT_NUM_8 = []
+
+
+
 
 std_use = ["std_use_LinkedList", "std_use_time"]
 std_use_LinkedList = []

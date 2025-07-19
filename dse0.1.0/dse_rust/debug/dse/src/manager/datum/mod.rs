@@ -280,7 +280,8 @@ pub mod env {
             }
         }
 
-        pub fn exe_data_index(&self, id_in: u64) -> Result<usize, ()> {
+        /// 通过exeid 获取数据集自身索引
+        pub fn get_data_index(&self, id_in: u64) -> Result<usize, ()> {
             match self.register.iter().find(|&&x| x.0 == id_in) {
                 Some(val) => return Ok(val.1),
                 None => {
@@ -299,8 +300,9 @@ pub mod env {
             };
         }
 
-        pub fn exe_data_mut(&mut self, id_in: u64) -> Result<&mut DT, ()> {
-            match self.register.iter().find(|&&x| x.0 == id_in) {
+        /// 通过exeid 获取数据集自身可变引用
+        pub fn get_data_mut(&mut self, exeid_in: u64) -> Result<&mut DT, ()> {
+            match self.register.iter().find(|&&x| x.0 == exeid_in) {
                 Some(val) => return Ok(get_mut!(self.data, val.1).as_mut().unwrap()),
                 None => {
                     return Err(crate::log::sorry(
@@ -318,7 +320,8 @@ pub mod env {
             };
         }
 
-        pub fn exe_data_ref(&self, exe_id: u64) -> Result<&DT, ()> {
+        /// 通过exeid 获取数据集自身引用
+        pub fn get_data_ref(&self, exe_id: u64) -> Result<&DT, ()> {
             match self.register.iter().find(|&&x| x.0 == exe_id) {
                 Some(val) => return Ok(unsafe { get!(self.data, val.1).as_ref().unwrap() }),
                 None => {
@@ -337,6 +340,7 @@ pub mod env {
             };
         }
 
+        /// 将特定索引上数据 绑定到执行上
         pub fn bind_exe_id2data(&mut self, exe_id: u64, data_index: usize) {
             // make sure register only once
             let mut is_only: bool = true;
