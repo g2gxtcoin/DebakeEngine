@@ -280,7 +280,7 @@ path = "..\\dse_macros"
 version = "0.*"
 
 [dependencies.ash]
-features = ["loaded","debug"]
+features = ["loaded"]
 version = "0.37.*"
 #version = "0.38.*" // extension mod has been cancel,code need renew carefully
 

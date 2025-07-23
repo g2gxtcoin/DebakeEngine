@@ -20,7 +20,7 @@ mod time;
 mod tool;
 mod workarea;
 
-use std::{io::Read, path::PathBuf};
+use std::path::PathBuf;
 
 use application::env::ApplicationD;
 use ash::vk;
@@ -41,9 +41,8 @@ use model::{
     transform::env::TransformD,
 };
 use renderer::{
-    buffer::env::{DeviceBuffer, DeviceBufferUsage, SurfaceIMGBuffer},
     cmd::env::{CommandRenderE, RenderCmdTask},
-    env::{ RendererE, RendererTask},
+    env::{PreTypeSurfaceIMG, RendererE, RendererTask, SurfaceIMG, SurfaceIMGUsage},
     pipeline::env::{GraphicPipeLinePCO, GraphicPipeLinePSO, RenderPipelineD, RenderPipelineType},
 };
 use resource::env::ResourceE;
@@ -169,10 +168,10 @@ fn main() -> std::io::Result<()> {
     dat.graphic_renderer_pipeline
         .alloc_data(Datum::default(), Some(exe.renderer1.id))
         .end();
-    dat.frame_buf
+    dat.fbo
         .alloc_data(Datum::default(), Some(exe.renderer1.id))
         .end();
-    dat.vertex_buf
+    dat.vbo
         .alloc_data(Datum::default(), Some(exe.renderer1.id))
         .end();
 
@@ -275,6 +274,7 @@ fn main() -> std::io::Result<()> {
         .alloc_data(Default::default(), Some(exe.model.id))
         .end();
 
+
     ////////////////////////////////////////////////////////
     ////                                                ////
     ////                   MODEL INIT                   ////
@@ -288,6 +288,7 @@ fn main() -> std::io::Result<()> {
     // 创建一个测试使用的模型
     let mut _test_model: ModelD = ModelD::build();
 
+    
     // 创建一个测试使用的2D网格
     // 这个网格将会被用来渲染一个简单的2D 四边形
     let _test_mesh = MeshD::build().build_default_2D_spirit();
@@ -304,9 +305,9 @@ fn main() -> std::io::Result<()> {
         .unwrap()
         .alloc_data(_test_trans, Option::None)
         .end();
-
+    
     // 将网格和变换向量绑定到模型上
-    _test_model.bind_attechment(model::global::MTID_DAT_MESH, 0);
+    _test_model.bind_attechment(model::global::MTID_DAT_MESH,0);
     _test_model.bind_attechment(model::global::MTID_DAT_TRANSFORM, 0);
 
     dat.model
@@ -329,13 +330,13 @@ fn main() -> std::io::Result<()> {
 
     exe.renderer1.create_custom_surface_img_view(
         dat.surface_img.get_data_index(exe.renderer1.id).unwrap(),
-        DeviceBufferUsage::SURF_IMG_UNIFORM_COLOR,
+        SurfaceIMGUsage::Storage(PreTypeSurfaceIMG::DefaultColor),
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     exe.renderer1.create_custom_surface_img_view(
         dat.surface_img.get_data_index(exe.renderer1.id).unwrap(),
-        DeviceBufferUsage::SURF_IMG_UNIFORM_DEPTH,
+        SurfaceIMGUsage::Storage(PreTypeSurfaceIMG::DefaultDepth),
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
@@ -359,13 +360,7 @@ fn main() -> std::io::Result<()> {
         .build_layout_info(renderer::cfg::env::PSO::DEFAULT_LAYOUT)
         .build_render_pass(renderer::cfg::env::PSO::DEFAULT_RENDER_PASS)
         .build_push_subpass(renderer::cfg::env::PSO::DEFAULT_SUBPASS_DESCRIPTION)
-        .build_push_shader_stages(dat.shader_mod.get_data_mut(exe.renderer1.id).unwrap())
-        // .build_push_vbd(crate::renderer::cfg::env::PSO::DEFAULT_VBD)
-        // .build_push_vad(
-        //     renderer::cfg::env::PSO::DEFAULT_VAD_4X4_RGBA64F,
-        // )
-        .build_valid_pso(dat.vk_api.gpu_properties_ref().unwrap());
-    //todo!();
+        .build_push_shader_stages(dat.shader_mod.get_data_mut(exe.renderer1.id).unwrap());
 
     dat.graphic_renderer_pipeline
         .get_data_mut(exe.renderer1.id)
@@ -381,17 +376,12 @@ fn main() -> std::io::Result<()> {
     exe.renderer1
         .create_graphic_pipeline_pass(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
 
-    exe.renderer1
-        .create_graphic_pipeline_pass(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
-
     exe.renderer1.exe_graphic_pipeline(
         dat.graphic_renderer_pipeline
             .get_data_mut(exe.renderer1.id)
             .unwrap(),
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
-
-    dev_stop!();
 
     exe.renderer1
         .create_graphic_pipeline(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
@@ -403,11 +393,9 @@ fn main() -> std::io::Result<()> {
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
-    dev_stop!();
-
     buf.shader_binary_code.release_buffer();
 
-    dev_stop!();
+    //dev_stop!();
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -420,14 +408,13 @@ fn main() -> std::io::Result<()> {
         .create_fbo(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
 
     exe.renderer1.exe_fbo(
-        dat.frame_buf.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.fbo.get_data_mut(exe.renderer1.id).unwrap(),
         dat.surface_img.get_data_mut(exe.renderer1.id).unwrap(),
         dat.graphic_renderer_pipeline
             .get_data_mut(exe.renderer1.id)
             .unwrap(),
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
-
     // CBO
     exe.renderer1.create_cmd_buffer(
         dat.surface_img.get_data_index(exe.renderer1.id).unwrap(),
@@ -442,9 +429,12 @@ fn main() -> std::io::Result<()> {
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
+
+    //dev_stop!();
+
     exe.renderer1.exe_vbo(
-        dat.vertex_buf.get_data_mut(exe.renderer1.id).unwrap(),
-        dat.mesh.get_data_mut(exe.model.id).unwrap(),
+        dat.vbo.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.mesh.get_data_mut(0).unwrap(),
         dat.graphic_renderer_pipeline
             .get_data_mut(exe.renderer1.id)
             .unwrap(),
@@ -488,7 +478,7 @@ fn main() -> std::io::Result<()> {
             .get_data_mut(exe.renderer1.id)
             .unwrap(),
         dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap(),
-        dat.frame_buf.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.fbo.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
     exe.render_cmd
@@ -498,7 +488,7 @@ fn main() -> std::io::Result<()> {
         .end_render_pass_sync(0, dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap());
 
     // 记得重新开回来
-    //dev_stop!();
+    dev_stop!();
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -515,8 +505,6 @@ fn main() -> std::io::Result<()> {
     ////////////////////////////////////////////////////////
 
     let mut count = 0;
-
-    dev_stop!();
 
     while unsafe { workarea::WORKAREA_CLOSE == false } {
         count = count + 1;
@@ -566,7 +554,6 @@ struct TaskM {
 #[derive(Default, crate::dse_macros::BufferMImplement)]
 // #[derive(Default)]
 struct BufferM {
-    io_buffer: Buffers<String>,
     shader_source_code: Buffers<ShaderTextD>,
     shader_binary_code: Buffers<ShaderResult<Vec<u32>>>,
 }
@@ -577,12 +564,10 @@ struct DatumM {
     vk_api: VkAshAPID,
     graphic_renderer_pipeline:
         Datum<Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>>,
-
-    cmd_buffer: Datum<Datum<DeviceBuffer<vk::CommandBuffer>>>,
-    frame_buf: Datum<Datum<DeviceBuffer<vk::Framebuffer>>>,
-    vertex_buf: Datum<Datum<DeviceBuffer<vk::Buffer>>>,
-    surface_img: Datum<Datum<DeviceBuffer<SurfaceIMGBuffer>>>,
-
+    cmd_buffer: Datum<Datum<vk::CommandBuffer>>,
+    fbo: Datum<Datum<vk::Framebuffer>>,
+    vbo: Datum<Datum<vk::Buffer>>,
+    surface_img: Datum<Datum<SurfaceIMG>>,
     shader_mod: Datum<Datum<ShaderModuleD>>,
     model: Datum<Datum<ModelD>>,
     transform: Datum<Datum<TransformD>>,

@@ -1,4 +1,3 @@
-pub mod buffer;
 pub mod cfg;
 pub mod cmd;
 pub mod pass;
@@ -10,7 +9,7 @@ pub mod pipeline;
 pub mod env {
 
     use crate::{
-        dbg_dev, dev_dbg, dev_stop,
+        dbg_dev,
         ext_api::graphic::env::{name, VkAshAPID},
         get,
         manager::{
@@ -45,7 +44,6 @@ pub mod env {
     use crate::manager::execute::sub::task_interface::{self};
 
     use super::{
-        buffer::env::{DeviceBuffer, DeviceBufferUsage, SurfaceIMGBuffer},
         cfg::{
             self,
             env::{
@@ -67,7 +65,7 @@ pub mod env {
         PushCmdBuffer(
             usize, //dat cmd index
             call_back_template::Callback3MR1R<
-                Datum<DeviceBuffer<vk::CommandBuffer>>,
+                Datum<vk::CommandBuffer>,
                 vk::CommandPool,
                 ash::Device,
                 i32,
@@ -77,23 +75,19 @@ pub mod env {
         CreateSurfaceImg(
             usize, // dat surface index
             call_back_template::Callback5MR1R<
-                Datum<DeviceBuffer<SurfaceIMGBuffer>>,
+                Datum<SurfaceIMG>,
+                RendererE,
                 VkAshAPID,
                 vk::ImageCreateInfo,
                 vk::ImageViewCreateInfo,
-                RendererE,
-                usize, // device buffer usage bitflag
+                SurfaceIMGUsage,
             >,
-            usize, //DeviceBufferUsage param usage
+            SurfaceIMGUsage, //param usage
         ),
 
         CreateSurfaceColorImg(
             usize, //index
-            call_back_template::Callback2MR1R<
-                Datum<DeviceBuffer<SurfaceIMGBuffer>>,
-                RendererE,
-                i32,
-            >,
+            call_back_template::Callback2MR1R<Datum<SurfaceIMG>, RendererE, i32>,
             i32, //param priority
         ),
 
@@ -130,8 +124,8 @@ pub mod env {
         // 用途：指定对应渲染管线，更新渲染管线状态
         CreateFBO(
             call_back_template::Callback4MR0R<
-                Datum<DeviceBuffer<vk::Framebuffer>>,
-                Datum<DeviceBuffer<SurfaceIMGBuffer>>,
+                Datum<vk::Framebuffer>,
+                Datum<SurfaceIMG>,
                 Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
                 RendererE,
             >,
@@ -146,18 +140,18 @@ pub mod env {
         // 用途：获取并载入mesh数据
         CreateVBO(
             call_back_template::Callback3MR2R<
-                Datum<DeviceBuffer<vk::Buffer>>,
+                Datum<vk::Buffer>,
                 Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
                 RendererE,
                 Datum<MeshD>,
-                VkAshAPID,
+                VkAshAPID
             >,
         ),
 
         UpdateVBO(
             usize, // mesh index
             call_back_template::Callback3MR2R<
-                Datum<DeviceBuffer<vk::Buffer>>,
+                Datum<vk::Buffer>,
                 Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
                 RendererE,
                 MeshD,
@@ -174,6 +168,37 @@ pub mod env {
                 vk::CommandBufferUsageFlags,
             >,
         ),
+    }
+    #[derive(Clone, Copy)]
+    pub enum SurfaceIMGUsage {
+        None,
+        Uniform(PreTypeSurfaceIMG),
+        Storage(PreTypeSurfaceIMG),
+    }
+
+    #[cfg(feature = "log_mode_dev")]
+    impl Debug for SurfaceIMGUsage {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::None => write!(f, "None"),
+                Self::Uniform(arg0) => f.debug_tuple("Uniform").field(arg0).finish(),
+                Self::Storage(arg0) => f.debug_tuple("Storage").field(arg0).finish(),
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum PreTypeSurfaceIMG {
+        None,
+        DefaultDepth,
+        DefaultColor,
+    }
+
+    #[derive(Debug)]
+    pub struct SurfaceIMG {
+        pub usage: SurfaceIMGUsage,
+        pub img: vk::Image,
+        pub view: vk::ImageView,
     }
 
     //
@@ -204,6 +229,7 @@ pub mod env {
         pub mod_handle: HINSTANCE,
 
         pub device: Option<ash::Device>,
+        pub device_mem: Option<Vec<vk::DeviceMemory>>,
 
         pub gpu_properties: Option<ash::vk::PhysicalDeviceProperties>,
 
@@ -215,6 +241,60 @@ pub mod env {
         pub renderer_surface: Option<vk::SurfaceKHR>,
 
         pub cmd_buffer_pool: Option<vk::CommandPool>,
+    }
+
+    impl SurfaceIMGUsage {
+        pub fn get_img_buffer_flag(&self) -> vk::BufferUsageFlags {
+            match self {
+                SurfaceIMGUsage::None => vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER,
+                SurfaceIMGUsage::Uniform(_) => vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER,
+                SurfaceIMGUsage::Storage(_) => vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER,
+            }
+        }
+    }
+
+    impl PreTypeSurfaceIMG {
+        pub fn get_img_info(&self) -> Result<vk::ImageCreateInfo, ()> {
+            match self {
+                PreTypeSurfaceIMG::None => Err(crate::log::sorry(
+                    crate::log::code::TYPE_EXE_ERROR
+                        | crate::log::code::CONDI_OPTION_NONE
+                        | crate::log::code::FILE_RENDERER
+                        | crate::log::LogCodeD::new()
+                            .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                            .get_code()
+                        | crate::log::LogCodeD::new()
+                            .encode(
+                                u16::MAX as u128,
+                                crate::log::LogPartFlag::LOGGER_PART_EXE_ID,
+                            )
+                            .get_code(),
+                )),
+                PreTypeSurfaceIMG::DefaultDepth => return Ok(DEFAULT_DEPTH_IMG.clone()),
+                PreTypeSurfaceIMG::DefaultColor => return Ok(DEFAULT_COLOR_IMG.clone()),
+            }
+        }
+        pub fn get_img_view_info(&self) -> Result<vk::ImageViewCreateInfo, ()> {
+            match self {
+                PreTypeSurfaceIMG::None => Err(crate::log::sorry(
+                    crate::log::code::TYPE_EXE_ERROR
+                        | crate::log::code::CONDI_OPTION_NONE
+                        | crate::log::code::FILE_RENDERER
+                        | crate::log::LogCodeD::new()
+                            .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                            .get_code()
+                        | crate::log::LogCodeD::new()
+                            .encode(
+                                u16::MAX as u128,
+                                crate::log::LogPartFlag::LOGGER_PART_EXE_ID,
+                            )
+                            .get_code(),
+                )),
+                PreTypeSurfaceIMG::DefaultDepth => return Ok(DEFAULT_DEPTH.clone()),
+                PreTypeSurfaceIMG::DefaultColor => return Ok(DEFAULT_COLOR.clone()),
+            }
+        }
+        pub fn register_new_pre_surface_img_type() {}
     }
 
     impl Default for RendererE {
@@ -232,6 +312,8 @@ pub mod env {
                 cmd_buffer_pool: Option::None,
                 renderer_attachment: RendererAttachment::default(),
                 swapchain_create_info: Option::None,
+
+                device_mem: Option::Some(Vec::with_capacity(8)),
 
                 gpu_properties: Option::None,
             };
@@ -659,7 +741,7 @@ pub mod env {
         pub fn create_custom_surface_img_view(
             &mut self,
             surf_img_index: usize,
-            usage: usize,
+            usage: SurfaceIMGUsage,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             tin.get_data_mut(self.renderer_attachment.index_surface_task)
@@ -683,11 +765,7 @@ pub mod env {
         // 渲染管线
         // 交换链
         //
-        pub fn create_vbo(
-            &mut self,
-            api_in: &mut VkAshAPID,
-            tin: &mut Datum<TaskQueue<RendererTask>>,
-        ) {
+        pub fn create_vbo(&mut self, api_in:&mut VkAshAPID,tin: &mut Datum<TaskQueue<RendererTask>>) {
             tin.get_data_mut(self.renderer_attachment.index_vbo_task)
                 .unwrap()
                 .push_task(RendererTask::CreateVBO(Self::_callback_create_vbo));
@@ -703,7 +781,7 @@ pub mod env {
         }
 
         pub fn _callback_update_vbo(
-            datum: &mut Datum<DeviceBuffer<vk::Buffer>>,
+            datum: &mut Datum<vk::Buffer>,
             pipeline: &mut Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
             renderer_slice: &mut RendererE,
             mesh: &MeshD,
@@ -713,20 +791,35 @@ pub mod env {
         }
 
         fn _callback_create_vbo(
-            datum: &mut Datum<DeviceBuffer<vk::Buffer>>,
+            datum: &mut Datum<vk::Buffer>,
             pipeline: &mut Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
             renderer_slice: &mut RendererE,
             mesh_datum: &Datum<MeshD>,
             api_bind: &VkAshAPID,
         ) {
-            let mut _vbo: DeviceBuffer<vk::Buffer> = DeviceBuffer::default();
+            let mut buffer_info = vk::BufferCreateInfo {
+                s_type: vk::StructureType::BUFFER_CREATE_INFO,
+                p_next: std::ptr::null(),
+                flags: vk::BufferCreateFlags::default(),
+                size: 0,
+                usage: vk::BufferUsageFlags::VERTEX_BUFFER,
+                sharing_mode: match renderer_slice.renderer_attachment.is_muti_queue_shared {
+                    true => vk::SharingMode::CONCURRENT,
+                    false => vk::SharingMode::EXCLUSIVE,
+                },
+                queue_family_index_count: renderer_slice.renderer_attachment.device_queue_count,
+                p_queue_family_indices: std::ptr::null(),
+            };
+
             for mi in mesh_datum.vec_ref().iter() {
+                // 更新 vertex buffer createinfo 中bufer size
+                buffer_info.size = mi.as_ref().unwrap().buffer_mem_size();
+
                 //分配顶点缓存
-                renderer_slice.alloc_device_mem::<vk::Buffer>(
-                    mi.as_ref().unwrap().buffer_mem_size(),
+                renderer_slice.alloc_device_mem(
+                    buffer_info.size,
                     vk::BufferUsageFlags::VERTEX_BUFFER,
-                    *api_bind.gpu_mem_properties_current_ref().unwrap(),
-                    &mut _vbo,
+                    *api_bind.gpu_mem_properties_current_ref().unwrap()
                 );
             }
 
@@ -753,12 +846,11 @@ pub mod env {
         }
 
         // create vk buffer
-        pub fn alloc_device_mem<T: Default>(
+        pub fn alloc_device_mem(
             &mut self,
             mem_size: u64,
             mem_usage: vk::BufferUsageFlags,
-            current_mem_properties: vk::PhysicalDeviceMemoryProperties,
-            device_buffer: &mut DeviceBuffer<T>,
+            current_mem_prop: vk::PhysicalDeviceMemoryProperties,
         ) {
             // request mem from device by vk instance
             let buffer_info = vk::BufferCreateInfo {
@@ -775,7 +867,7 @@ pub mod env {
                 p_queue_family_indices: null(),
             };
 
-            let buffer: vk::Buffer = unsafe {
+            let buffer = unsafe {
                 self.device
                     .as_mut()
                     .unwrap()
@@ -783,27 +875,27 @@ pub mod env {
                     .unwrap()
             };
 
-            // get mem requirement info from device by vk instance
-            let mem_req: vk::MemoryRequirements = unsafe {
+            // request mem from device by vk instance
+            let mem_req = unsafe {
                 self.device
                     .as_mut()
                     .unwrap()
                     .get_buffer_memory_requirements(buffer)
             };
 
-            // get mem requirement type from current gpu
-            let memory_type_index = current_mem_properties
+            // request mem from device by vk instance
+            let memory_type_index = current_mem_prop
                 .memory_types
                 .iter()
                 .enumerate()
                 .find(|&(index, data)| {
-                    data.property_flags == (vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                        && (((1 << index) & mem_req.memory_type_bits) != 0)
+                    data.property_flags == vk::MemoryPropertyFlags::DEVICE_LOCAL
+                        && ((1 << index) & mem_req.memory_type_bits) != 0
                 })
-                .expect("Failed to find suitable memory type")
+                .unwrap()
                 .0;
 
-            let _alloc_info: vk::MemoryAllocateInfo = vk::MemoryAllocateInfo {
+            let info = vk::MemoryAllocateInfo {
                 s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
                 p_next: null(),
                 allocation_size: mem_size,
@@ -813,11 +905,10 @@ pub mod env {
                 self.device
                     .as_mut()
                     .unwrap()
-                    .allocate_memory(&_alloc_info, Option::None)
-                    .expect("Failed to allocate memory")
+                    .allocate_memory(&info, Option::None)
+                    .expect("memory allocate fail")
             };
-
-            *device_buffer.device_mem_mut() = mem;
+            self.device_mem.as_mut().unwrap().push(mem);
         }
 
         pub fn link_task_queue(&mut self, tqin: &mut Datum<TaskQueue<RendererTask>>) {
@@ -853,7 +944,7 @@ pub mod env {
         // 3.挂起
         pub fn exe_vbo(
             &mut self,
-            datum_vkbuf: &mut Datum<DeviceBuffer<vk::Buffer>>,
+            datum_vkbuf: &mut Datum<vk::Buffer>,
             datum_mesh: &mut Datum<MeshD>,
             pipeline: &mut Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
             api_bind: &VkAshAPID,
@@ -866,7 +957,7 @@ pub mod env {
             for ti in _tasks.task_iter_mut().unwrap() {
                 match task_interface::TaskTrait::task_mut(ti) {
                     RendererTask::CreateVBO(call) => {
-                        call(datum_vkbuf, pipeline, self, datum_mesh, api_bind);
+                        call(datum_vkbuf, pipeline, self, datum_mesh,api_bind);
                     }
                     RendererTask::UpdateVBO(mesh_index, call) => {
                         call(
@@ -874,7 +965,7 @@ pub mod env {
                             pipeline,
                             self,
                             get!(datum_mesh.vec_ref(), *mesh_index).as_ref().unwrap(),
-                            api_bind,
+                            api_bind
                         );
                     }
                     _ => {}
@@ -886,8 +977,8 @@ pub mod env {
         //
         pub fn exe_fbo(
             &mut self,
-            datum_fbo: &mut Datum<DeviceBuffer<vk::Framebuffer>>,
-            datum_surfimg: &mut Datum<DeviceBuffer<SurfaceIMGBuffer>>,
+            datum_fbo: &mut Datum<vk::Framebuffer>,
+            datum_surfimg: &mut Datum<SurfaceIMG>,
             datum_pipeline: &mut Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
@@ -926,7 +1017,7 @@ pub mod env {
 
         pub fn exe_surface_img(
             &mut self,
-            datum: &mut Datum<DeviceBuffer<SurfaceIMGBuffer>>,
+            datum: &mut Datum<SurfaceIMG>,
             api_in: &mut VkAshAPID,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
@@ -941,27 +1032,34 @@ pub mod env {
                     RendererTask::CreateSurfaceColorImg(index, call, priority) => {
                         call(datum, self, &priority)
                     }
-                    RendererTask::CreateSurfaceImg(index, call, usage) => call(
-                        datum,
-                        api_in,
-                        DeviceBufferUsage::get_img_info(*usage).as_mut().unwrap(),
-                        DeviceBufferUsage::get_img_view_info(*usage)
-                            .as_mut()
-                            .unwrap(),
-                        self,
-                        &usage,
-                    ),
-
-                    _ => todo!(),
-                };
+                    RendererTask::CreateSurfaceImg(index, call, usage) => match usage {
+                        SurfaceIMGUsage::None => todo!(),
+                        SurfaceIMGUsage::Uniform(pre) => call(
+                            datum,
+                            self,
+                            api_in,
+                            &mut pre.get_img_info().unwrap(),
+                            &mut pre.get_img_view_info().unwrap(),
+                            &usage,
+                        ),
+                        SurfaceIMGUsage::Storage(pre) => call(
+                            datum,
+                            self,
+                            api_in,
+                            &mut pre.get_img_info().unwrap(),
+                            &mut pre.get_img_view_info().unwrap(),
+                            &usage,
+                        ),
+                    },
+                    _ => {}
+                }
             }
-
             _tasks.end_execute();
         }
 
         pub fn exe_cmdbuffer(
             &mut self,
-            data: &mut Datum<DeviceBuffer<vk::CommandBuffer>>,
+            data: &mut Datum<vk::CommandBuffer>,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             let mut _tasks = tin
@@ -979,7 +1077,6 @@ pub mod env {
                     ),
                     _ => {}
                 }
-                
             }
             _tasks.end_execute();
         }
@@ -1052,20 +1149,19 @@ pub mod env {
         }
 
         fn _callback_create_fbo(
-            datum_fbo: &mut Datum<DeviceBuffer<vk::Framebuffer>>,
-            datum_surfimg: &mut Datum<DeviceBuffer<SurfaceIMGBuffer>>,
+            datum_fbo: &mut Datum<vk::Framebuffer>,
+            datum_surfimg: &mut Datum<SurfaceIMG>,
             datum_pipeline: &mut Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
             renderer_slice: &mut RendererE,
         ) {
             let mut _attachments = Vec::new();
             for si in datum_surfimg.vec_ref() {
                 // dbg!(&((si.as_ref().unwrap())));
-                _attachments.push(si.as_ref().unwrap().buffer_ref().view_ref());
+                _attachments.push(si.as_ref().unwrap().view);
             }
 
             if renderer_slice.swapchain_create_info.is_some() {
                 for rpi in datum_pipeline.vec_mut().iter() {
-                    let mut _buf: DeviceBuffer<vk::Framebuffer> = DeviceBuffer::<vk::Framebuffer>::default();
                     let _count = rpi
                         .as_ref()
                         .unwrap()
@@ -1105,24 +1201,21 @@ pub mod env {
                         layers: _attachments.len() as u32,
                     };
 
-                    unsafe {
-                        _buf.set_buffer( renderer_slice
+                    datum_fbo.alloc_data(
+                        unsafe {
+                            renderer_slice
                                 .device
                                 .as_mut()
                                 .unwrap()
                                 .create_framebuffer(&_info, Option::None)
-                                .unwrap())
-                    }
-
-                    datum_fbo.alloc_data(
-                        _buf,
+                                .unwrap()
+                        },
                         Option::None,
                     );
                 }
             }
         }
 
-        ///
         fn _callback_create_graphic_pipeline<TStates, TArrays>(
             datum: &mut Datum<RenderPipelineD<TStates, TArrays>>,
             renderer_slice: &mut RendererE,
@@ -1135,9 +1228,7 @@ pub mod env {
                 match ri.as_mut().unwrap().pipeline_info() {
                     pipeline::env::PipelineCreateInfoResult::None => {}
                     pipeline::env::PipelineCreateInfoResult::Graphic(val) => {
-                        // 开发模式下打印 图形管线信息
-                        dev_dbg!(&val);
-                        _pipeline_info_slice.push(val);
+                        _pipeline_info_slice.push(val)
                     }
                     pipeline::env::PipelineCreateInfoResult::Compute(_) => {}
                     pipeline::env::PipelineCreateInfoResult::RayTracing(_) => {}
@@ -1258,13 +1349,16 @@ pub mod env {
             }
         }
 
+        //fn _callback_create_color_surface_img_view
+
         fn _callback_create_custom_surface_img_view(
-            datum: &mut Datum<DeviceBuffer<SurfaceIMGBuffer>>,
+            datum: &mut Datum<SurfaceIMG>,
+            renderer_slice: &mut RendererE,
             api_bind: &mut VkAshAPID,
+
             vk_img_format: &mut vk::ImageCreateInfo,
             vk_render_img2surface_config: &mut vk::ImageViewCreateInfo,
-            renderer_slice: &mut RendererE,
-            usage: &usize,
+            usage: &SurfaceIMGUsage,
         ) {
             vk_img_format.extent = vk::Extent3D::builder()
                 .width(
@@ -1315,6 +1409,25 @@ pub mod env {
                     .size
             };
 
+            renderer_slice.alloc_device_mem(
+                alloc_size,
+                usage.get_img_buffer_flag(),
+                *api_bind.gpu_mem_properties_current_ref().unwrap(),
+            );
+
+            unsafe {
+                renderer_slice
+                    .device
+                    .as_mut()
+                    .unwrap()
+                    .bind_image_memory(
+                        img,
+                        *renderer_slice.device_mem.as_mut().unwrap().last().unwrap(),
+                        0,
+                    )
+                    .expect("msg")
+            };
+
             let view = unsafe {
                 renderer_slice
                     .device
@@ -1323,34 +1436,20 @@ pub mod env {
                     .create_image_view(&vk_render_img2surface_config, Option::None)
                     .unwrap()
             };
-
-            let _surfbuf = SurfaceIMGBuffer::default().build_img(img).build_view(view);
-            let mut _buf: DeviceBuffer<SurfaceIMGBuffer> =
-                DeviceBuffer::<SurfaceIMGBuffer>::default()
-                    .build_buffer(_surfbuf)
-                    .build_usage(*usage);
-
-            renderer_slice.alloc_device_mem(
-                alloc_size,
-                DeviceBufferUsage::get_vk_usage(*usage),
-                *api_bind.gpu_mem_properties_current_ref().unwrap(),
-                &mut _buf,
-            );
-
-            unsafe {
-                renderer_slice
-                    .device
-                    .as_mut()
-                    .unwrap()
-                    .bind_image_memory(img, _buf.device_mem_ref(), 0)
-                    .expect("bind custom image_memory fail")
-            };
-
-            datum.alloc_data(_buf, Option::None).end();
+            datum
+                .alloc_data(
+                    SurfaceIMG {
+                        img,
+                        view,
+                        usage: usage.clone(),
+                    },
+                    Option::None,
+                )
+                .end();
         }
 
         fn _callback_create_color_surface_img_view(
-            datum: &mut Datum<DeviceBuffer<SurfaceIMGBuffer>>,
+            datum: &mut Datum<SurfaceIMG>,
             renderer_slice: &mut RendererE,
 
             _priority_level: &i32,
@@ -1365,8 +1464,6 @@ pub mod env {
             };
 
             for imgi in images {
-                let mut _buf: DeviceBuffer<SurfaceIMGBuffer> = Default::default();
-
                 let info = vk::ImageViewCreateInfo {
                     s_type: vk::StructureType::IMAGE_VIEW_CREATE_INFO,
                     p_next: null(),
@@ -1395,8 +1492,6 @@ pub mod env {
                         layer_count: 1,
                     },
                 };
-                // todo!(); // leak device buffer alloc
-
                 let view = unsafe {
                     renderer_slice
                         .device
@@ -1406,43 +1501,18 @@ pub mod env {
                         .unwrap()
                 };
 
-                let alloc_size = unsafe {
-                    renderer_slice
-                        .device
-                        .as_mut()
-                        .unwrap()
-                        .get_image_memory_requirements(imgi)
-                        .size
+                let _surface_img = SurfaceIMG {
+                    img: imgi,
+                    view,
+                    usage: SurfaceIMGUsage::Uniform(PreTypeSurfaceIMG::DefaultColor),
                 };
 
-                let _surfbuf = SurfaceIMGBuffer::default().build_img(imgi).build_view(view);
-                let mut _buf: DeviceBuffer<SurfaceIMGBuffer> =
-                    DeviceBuffer::<SurfaceIMGBuffer>::default()
-                        .build_buffer(_surfbuf)
-                        .build_usage(DeviceBufferUsage::SURF_IMG_UNIFORM_COLOR);
-
-                // renderer_slice.alloc_device_mem(
-                //     alloc_size,
-                //     DeviceBufferUsage::get_vk_usage(DeviceBufferUsage::SURF_IMG_UNIFORM_COLOR),
-                //     *api_bind.gpu_mem_properties_current_ref().unwrap(),
-                //     &mut _buf,
-                // );
-
-                unsafe {
-                    renderer_slice
-                        .device
-                        .as_mut()
-                        .unwrap()
-                        .bind_image_memory(imgi, _buf.device_mem_ref(), 0)
-                        .expect("bind custom image_memory fail")
-                };
-
-                datum.alloc_data(_buf, Option::None).end();
+                datum.alloc_data(_surface_img, Option::None).end();
             }
         }
 
         fn _callback_create_cmd_buffer(
-            datum: &mut Datum<DeviceBuffer<vk::CommandBuffer>>,
+            datum: &mut Datum<vk::CommandBuffer>,
             pool: &mut vk::CommandPool,
             logical_device: &mut ash::Device,
 
@@ -1461,13 +1531,7 @@ pub mod env {
                     .allocate_command_buffers(&cmd_buffer_allocate_info)
                     .unwrap()
             };
-
-            for ci in command_buffers.into_iter() {
-                let device_buf = DeviceBuffer::<vk::CommandBuffer>::default()
-                    .build_buffer(ci)
-                    .build_usage(DeviceBufferUsage::CMD_BUFFER);
-                datum.alloc_data(device_buf, Option::None).end();
-            }
+            datum.alloc_data(command_buffers[0], Option::None);
         }
 
         pub fn drop(mut self) {
