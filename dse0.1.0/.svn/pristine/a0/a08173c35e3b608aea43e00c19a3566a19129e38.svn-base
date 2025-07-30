@@ -704,7 +704,7 @@ crate::send2logger_dev!(
         .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
         .get_code()
     | crate::log::LogCodeD::new()
-        .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_)
+        .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_ID)
         .get_code()
 );
 
@@ -785,7 +785,7 @@ pub mod code {
     pub const CONDI_ONLY_DATA_EXIST:/*******************************************/ u128 = 0x0000_00000000_0000_0000_0000_0024_0000;
     pub const CONDI_RENDER_PIPELINE_NOT_FOUND:/*********************************/ u128 = 0x0000_00000000_0000_0000_0000_0025_0000;
     pub const CONDI_INVAILD_PARAMETER_INPUT:/***********************************/ u128 = 0x0000_00000000_0000_0000_0000_0026_0000;
-    pub const CONDI_NOMAP_DEVICE_MEM_MODE:/*************************************/ u128 = 0x0000_00000000_0000_0000_0000_0027_0000;
+
     /************************************************************************************file***time*****did**eid**lin**con**type */
 
     /************************************************************************************file***time*****did**eid**lin**con**type */

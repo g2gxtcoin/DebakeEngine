@@ -10,8 +10,8 @@ pub mod env {
     use std::{fmt::Debug, usize};
 
     pub trait DeviceBufferTrait<BufferT> {
-        fn usage_ref(&self) -> Result<usize, ()> {
-            return Err(crate::send2logger_dev!(
+        fn usage_ref(&self) -> Result<usize, ()>{
+             return Err(crate::send2logger_dev!(
                 crate::log::code::TYPE_TRAIT_ERROR
                     | crate::log::code::CONDI_UNDEFINE_TRAIT_MEM
                     | crate::log::code::FILE_RENDERER_BUFFER
@@ -23,8 +23,8 @@ pub mod env {
                         .get_code()
             ));
         }
-        fn usage_mut(&mut self) -> Result<usize, ()> {
-            return Err(crate::send2logger_dev!(
+        fn usage_mut(&mut self) -> Result<usize, ()>{
+             return Err(crate::send2logger_dev!(
                 crate::log::code::TYPE_TRAIT_ERROR
                     | crate::log::code::CONDI_UNDEFINE_TRAIT_MEM
                     | crate::log::code::FILE_RENDERER_BUFFER
@@ -36,8 +36,8 @@ pub mod env {
                         .get_code()
             ));
         }
-        fn buffer_mut(&mut self) -> Result<&mut BufferT, ()> {
-            return Err(crate::send2logger_dev!(
+        fn buffer_mut(&mut self) -> Result<&mut BufferT, ()>{
+             return Err(crate::send2logger_dev!(
                 crate::log::code::TYPE_TRAIT_ERROR
                     | crate::log::code::CONDI_UNDEFINE_TRAIT_MEM
                     | crate::log::code::FILE_RENDERER_BUFFER
@@ -49,8 +49,8 @@ pub mod env {
                         .get_code()
             ));
         }
-        fn buffer_ref(&self) -> Result<&BufferT, ()> {
-            return Err(crate::send2logger_dev!(
+        fn buffer_ref(&self) -> Result<&BufferT, ()>{
+             return Err(crate::send2logger_dev!(
                 crate::log::code::TYPE_TRAIT_ERROR
                     | crate::log::code::CONDI_UNDEFINE_TRAIT_MEM
                     | crate::log::code::FILE_RENDERER_BUFFER
@@ -62,8 +62,9 @@ pub mod env {
                         .get_code()
             ));
         }
-        fn device_mem_ref(&self) -> Result<&vk::DeviceMemory, ()> {
-            return Err(crate::send2logger_dev!(
+        fn device_mem_ref(&self)
+        -> Result<&vk::DeviceMemory, ()>{
+             return Err(crate::send2logger_dev!(
                 crate::log::code::TYPE_TRAIT_ERROR
                     | crate::log::code::CONDI_UNDEFINE_TRAIT_MEM
                     | crate::log::code::FILE_RENDERER_BUFFER
@@ -75,8 +76,8 @@ pub mod env {
                         .get_code()
             ));
         }
-        fn device_mem_mut(&mut self) -> Result<&vk::DeviceMemory, ()> {
-            return Err(crate::send2logger_dev!(
+        fn device_mem_mut(&mut self) -> Result<&vk::DeviceMemory, ()>{
+             return Err(crate::send2logger_dev!(
                 crate::log::code::TYPE_TRAIT_ERROR
                     | crate::log::code::CONDI_UNDEFINE_TRAIT_MEM
                     | crate::log::code::FILE_RENDERER_BUFFER
@@ -93,137 +94,16 @@ pub mod env {
     #[derive(Clone, Copy)]
     pub struct DeviceBufferUsage {}
 
-    #[derive(Debug)]
-    pub struct DeviceBuffer<BufferT>
-    where
-        BufferT: Default,
-    {
-        pub usage: usize,
-        buffer: BufferT,
-        device_mem: vk::DeviceMemory,
-    }
-
-    #[derive(Debug)]
-    pub struct SurfaceIMGBuffer {
-        vkbuf: vk::Buffer,
-        img: vk::Image,
-        view: vk::ImageView,
-    }
-
-    impl SurfaceIMGBuffer {
-        pub fn build(self) -> Self {
-            return Default::default();
-        }
-
-        pub fn build_img(mut self, img_in: vk::Image) -> Self {
-            self.img = img_in;
-            return self;
-        }
-
-        pub fn build_view(mut self, view_in: vk::ImageView) -> Self {
-            self.view = view_in;
-            return self;
-        }
-
-        pub fn build_vk_buffer(mut self, vkbuf_in: vk::Buffer) -> Self {
-            self.vkbuf = vkbuf_in;
-            return self;
-        }
-
-        pub fn img_ref(&self) -> vk::Image {
-            self.img
-        }
-        pub fn view_ref(&self) -> vk::ImageView {
-            self.view
-        }
-
-        pub fn img_mut(&mut self) -> &mut vk::Image {
-            &mut self.img
-        }
-        pub fn view_mut(&mut self) -> &mut vk::ImageView {
-            &mut self.view
-        }
-
-        pub fn set_view(&mut self, view_in: vk::ImageView) {
-            self.view = view_in;
-        }
-
-        pub fn set_img(&mut self, img_in: vk::Image) {
-            self.img = img_in;
-        }
-
-        pub fn set_vkbuffer(&mut self, vkbuf_in: vk::Buffer) {
-            self.vkbuf = vkbuf_in;
-        }
-    }
-
-    impl<BufferT> Default for DeviceBuffer<BufferT>
-    where
-        BufferT: Default,
-    {
-        fn default() -> Self {
-            Self {
-                usage: DeviceBufferUsage::NONE | (crate::renderer::cfg::env::API_BUFFER::DEFAULT_MEMORY_PROPERTY as usize),
-                buffer: Default::default(),
-                device_mem: vk::DeviceMemory::null(),
-            }
-        }
-    }
-
-    impl Default for SurfaceIMGBuffer {
-        fn default() -> Self {
-            Self {
-                vkbuf: vk::Buffer::null(),
-                img: vk::Image::null(),
-                view: vk::ImageView::null(),
-            }
-        }
-    }
-
-    impl<BufferT> DeviceBufferTrait<BufferT> for DeviceBuffer<BufferT>
-    where
-        BufferT: Default,
-    {
-        fn usage_ref(&self) -> Result<usize, ()> {
-            return Ok(self.usage);
-        }
-        fn usage_mut(&mut self) -> Result<usize, ()> {
-            return Ok(self.usage);
-        }
-        fn buffer_mut(&mut self) -> Result<&mut BufferT, ()> {
-            return Ok(&mut self.buffer);
-        }
-        fn buffer_ref(&self) -> Result<&BufferT, ()> {
-            return Ok(&self.buffer);
-        }
-        fn device_mem_ref(&self) -> Result<&DeviceMemory, ()> {
-            return Ok(&self.device_mem);
-        }
-        fn device_mem_mut(&mut self) -> Result<&DeviceMemory, ()> {
-            return Ok(&mut self.device_mem);
-        }
-    }
-
     impl DeviceBufferUsage {
         pub const NONE: usize = 0x0;
         pub const SURFACE_IMG: usize = 0x1;
         pub const VERTEX_BUFFER: usize = 0x02;
         pub const FRAME_BUFFER: usize = 0x03;
         pub const CMD_BUFFER: usize = 0x04;
-
         pub const UNIFORM: usize = 0x0001 << 8;
         pub const STORAGE: usize = 0x0002 << 8;
-        
         pub const COLOR: usize = 0x000001 << 16;
         pub const DEPTH: usize = 0x000002 << 16;
-
-        pub const MEM_TYPE_LOCAL_HOST: usize = 0x00000001 << 24;
-        pub const MEM_TYPE_RAM_VISIBLE: usize = 0x00000002 << 24;
-        pub const MEM_TYPE_RAM_COHERENT: usize = 0x00000004 << 24;
-        pub const MEM_TYPE_RAM_CACHED: usize = 0x00000008 << 24;
-        pub const MEM_TYPE_RAM_UNVISIBLE: usize = 0x00000010 << 24;
-        pub const MEM_TYPE_RAM_PROTECED: usize = 0x00000020 << 24;
-
         pub const SURF_IMG_UNIFORM: usize = Self::SURFACE_IMG | Self::UNIFORM;
         pub const SURF_IMG_STORAGE: usize = Self::SURFACE_IMG | Self::STORAGE;
         pub const SURF_IMG_COLOR: usize = Self::SURFACE_IMG | Self::COLOR;
@@ -233,16 +113,8 @@ pub mod env {
         pub const SURF_IMG_STORAGE_COLOR: usize = Self::SURFACE_IMG | Self::COLOR | Self::STORAGE;
         pub const SURF_IMG_STORAGE_DEPTH: usize = Self::SURFACE_IMG | Self::DEPTH | Self::STORAGE;
 
-        pub fn get_vk_mem_mapping_type(vin: usize) -> vk::MemoryPropertyFlags {
-            let _bit_mask = vin & 0xff000000;
-            if (_bit_mask >> 24) == 0 {
-                return vk::MemoryPropertyFlags::DEVICE_LOCAL;
-            }
-            return vk::MemoryPropertyFlags::from_raw((_bit_mask >> 24) as u32);
-        }
-
         pub fn get_vk_usage(vin: usize) -> vk::BufferUsageFlags {
-            match vin & 0xffff {
+            match vin {
                 Self::SURFACE_IMG => vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER,
                 Self::SURF_IMG_UNIFORM => vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER,
                 Self::SURF_IMG_STORAGE => vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER,
@@ -317,6 +189,98 @@ pub mod env {
                             .get_code(),
                 )),
             }
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct SurfaceIMGBuffer {
+        img: vk::Image,
+        view: vk::ImageView,
+    }
+
+    #[derive(Debug)]
+    pub struct DeviceBuffer<BufferT>
+    where
+        BufferT: Default,
+    {
+        pub usage: usize,
+        buffer: BufferT,
+        device_mem: vk::DeviceMemory,
+    }
+
+    impl SurfaceIMGBuffer {
+        pub fn build(self) -> Self {
+            return Default::default();
+        }
+
+        pub fn build_img(mut self, img_in: vk::Image) -> Self {
+            self.img = img_in;
+            return self;
+        }
+
+        pub fn build_view(mut self, view_in: vk::ImageView) -> Self {
+            self.view = view_in;
+            return self;
+        }
+
+        pub fn img_ref(&self) -> vk::Image {
+            self.img
+        }
+        pub fn view_ref(&self) -> vk::ImageView {
+            self.view
+        }
+
+        pub fn img_mut(&mut self) -> &mut vk::Image {
+            &mut self.img
+        }
+        pub fn view_mut(&mut self) -> &mut vk::ImageView {
+            &mut self.view
+        }
+    }
+
+    impl<BufferT> Default for DeviceBuffer<BufferT>
+    where
+        BufferT: Default,
+    {
+        fn default() -> Self {
+            Self {
+                usage: DeviceBufferUsage::NONE,
+                buffer: Default::default(),
+                device_mem: vk::DeviceMemory::null(),
+            }
+        }
+    }
+
+    impl Default for SurfaceIMGBuffer {
+        fn default() -> Self {
+            Self {
+                img: vk::Image::null(),
+                view: vk::ImageView::null(),
+            }
+        }
+    }
+
+    impl<BufferT> DeviceBufferTrait<BufferT> for DeviceBuffer<BufferT>
+    where
+        BufferT: Default,
+    {
+        fn usage_ref(&self) -> Result<usize, ()> {
+            return Ok(self.usage);
+        }
+        fn usage_mut(&mut self) -> Result<usize, ()> {
+            return Ok(self.usage);
+        }
+        fn buffer_mut(&mut self) -> Result<&mut BufferT, ()> {
+            return Ok(&mut self.buffer );
+        }
+        fn buffer_ref(&self) -> Result<&BufferT, ()> {
+            return Ok(&self.buffer);
+        }
+        fn device_mem_ref(&self) -> Result<&DeviceMemory, ()> {
+            return Ok(&self.device_mem);
+        }
+        fn device_mem_mut(&mut self) -> Result<&DeviceMemory, ()> {
+            return Ok(&mut self.device_mem);
         }
     }
 

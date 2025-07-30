@@ -189,21 +189,15 @@ pub mod env {
     //
     #[repr(C, align(8))]
     pub struct RendererAttachment {
-        // 性能优先模式，否则将按照最大适配原则开启设备可支持的尽可能多的功能
-        // performance first mode, otherwise will open the most suitable device to support as many features as possible
-        // 目前影响的参数
-        // MemoryPropertyFlag
-        pub is_performance_first: bool,
-
         pub is_muti_queue_shared: bool,
-        pub is_vertical_blank: bool, //垂直同步
+        pub is_vertical_blank: bool,
         pub is_clip: bool,
         pub is_cube_surface: bool,
 
         pub surface_pixle_format: vk::Format,
         pub swap_level: u32,
-        pub cube_surface_width: u32, // 渲染表面深度
-        pub device_queue_count: u32, // gpu 设备最大队列支持
+        pub cube_surface_width: u32,
+        pub device_queue_count: u32,
 
         pub index_surface_task: u64,
         pub index_cmd_task: u64,
@@ -310,7 +304,6 @@ pub mod env {
                     .as_mut()
                     .unwrap()
                     .end_command_buffer(_cmd)
-                    .unwrap();
             };
         }
 
@@ -338,11 +331,6 @@ pub mod env {
 
         pub fn build() -> Self {
             return Default::default();
-        }
-
-        pub fn build_set_performance_mode(mut self, bool_in: bool) -> Self {
-            self.renderer_attachment.is_performance_first = bool_in;
-            return self;
         }
 
         pub fn build_gpu_properties(mut self, api_in: &mut VkAshAPID) -> Self {
@@ -716,11 +704,7 @@ pub mod env {
                 .push_task(RendererTask::CreateVBO(Self::_callback_create_vbo));
         }
 
-        pub fn update_specific_vbo(
-            &mut self,
-            mesh_index: usize,
-            tin: &mut Datum<TaskQueue<RendererTask>>,
-        ) {
+        pub fn update_vbo(&mut self, mesh_index: usize, tin: &mut Datum<TaskQueue<RendererTask>>) {
             tin.get_data_mut(self.renderer_attachment.index_vbo_task)
                 .unwrap()
                 .push_task(RendererTask::UpdateVBO(
@@ -798,42 +782,6 @@ pub mod env {
                 .push_task(RendererTask::CreateFBO(Self::_callback_create_fbo))
         }
 
-        fn _find_suitable_mem_type(
-            &self,
-            default_type: vk::MemoryPropertyFlags,
-            buf_in: &vk::Buffer,
-            proper_in: &vk::PhysicalDeviceMemoryProperties,
-        ) -> usize {
-            let mut _req_type = default_type;
-            // get mem requirement info from device by vk instance
-            let mem_req: vk::MemoryRequirements = unsafe {
-                self.device
-                    .as_ref()
-                    .unwrap()
-                    .get_buffer_memory_requirements(*buf_in)
-            };
-            let default_type =
-                vk::MemoryPropertyFlags::from_raw(default_type.as_raw() | mem_req.memory_type_bits);
-
-            let mut _r = 0;
-            let mut _r_type_flag = 0;
-
-            for tei in proper_in.memory_types.iter().enumerate() {
-                if tei.1.property_flags.contains(default_type) {
-                    if self.renderer_attachment.is_performance_first {
-                        return tei.0;
-                    } else if _r_type_flag < tei.1.property_flags.as_raw() {
-                        _r = tei.0;
-                    }
-                }
-            }
-            if _r == 0 {
-                return 1;
-            } else {
-                return _r;
-            }
-        }
-
         fn _alloc_device_mem_surfimg(
             &mut self,
             mem_size: u64,
@@ -841,7 +789,7 @@ pub mod env {
             current_mem_properties: vk::PhysicalDeviceMemoryProperties,
             surf_buffer: &mut DeviceBuffer<SurfaceIMGBuffer>,
         ) {
-            // request mem from device by vk instance
+               // request mem from device by vk instance
             let buffer_info = vk::BufferCreateInfo {
                 s_type: vk::StructureType::BUFFER_CREATE_INFO,
                 p_next: null(),
@@ -856,7 +804,7 @@ pub mod env {
                 p_queue_family_indices: null(),
             };
 
-            let _vkbuffer: vk::Buffer = unsafe {
+            let buffer: vk::Buffer = unsafe {
                 self.device
                     .as_mut()
                     .unwrap()
@@ -864,12 +812,25 @@ pub mod env {
                     .unwrap()
             };
 
+            // get mem requirement info from device by vk instance
+            let mem_req: vk::MemoryRequirements = unsafe {
+                self.device
+                    .as_mut()
+                    .unwrap()
+                    .get_buffer_memory_requirements(buffer)
+            };
+
             // get mem requirement type from current gpu
-            let memory_type_index = self._find_suitable_mem_type(
-                DeviceBufferUsage::get_vk_mem_mapping_type(surf_buffer.usage_ref().unwrap()),
-                &_vkbuffer,
-                &current_mem_properties,
-            );
+            let memory_type_index = current_mem_properties
+                .memory_types
+                .iter()
+                .enumerate()
+                .find(|&(index, data)| {
+                    data.property_flags == (vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                        && (((1 << index) & mem_req.memory_type_bits) != 0)
+                })
+                .expect("Failed to find suitable memory type")
+                .0;
 
             let _alloc_info: vk::MemoryAllocateInfo = vk::MemoryAllocateInfo {
                 s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
@@ -886,19 +847,6 @@ pub mod env {
             };
 
             surf_buffer.set_devicemem(mem);
-            surf_buffer.buffer_mut().unwrap().set_vkbuffer(_vkbuffer);
-
-            unsafe {
-                self.device
-                    .as_mut()
-                    .unwrap()
-                    .bind_image_memory(
-                        *surf_buffer.buffer_mut().unwrap().img_mut(),
-                        *surf_buffer.device_mem_ref().unwrap(),
-                        0,
-                    )
-                    .expect("bind custom image_memory fail")
-            };
         }
 
         // create vk buffer
@@ -933,11 +881,24 @@ pub mod env {
             };
 
             // get mem requirement info from device by vk instance
-            let memory_type_index = self._find_suitable_mem_type(
-                DeviceBufferUsage::get_vk_mem_mapping_type(device_buffer.usage_ref().unwrap()),
-                &buffer,
-                &current_mem_properties,
-            );
+            let mem_req: vk::MemoryRequirements = unsafe {
+                self.device
+                    .as_mut()
+                    .unwrap()
+                    .get_buffer_memory_requirements(buffer)
+            };
+
+            // get mem requirement type from current gpu
+            let memory_type_index = current_mem_properties
+                .memory_types
+                .iter()
+                .enumerate()
+                .find(|&(index, data)| {
+                    data.property_flags == (vk::MemoryPropertyFlags::DEVICE_LOCAL)
+                        && (((1 << index) & mem_req.memory_type_bits) != 0)
+                })
+                .expect("Failed to find suitable memory type")
+                .0;
 
             let _alloc_info: vk::MemoryAllocateInfo = vk::MemoryAllocateInfo {
                 s_type: vk::StructureType::MEMORY_ALLOCATE_INFO,
@@ -956,58 +917,12 @@ pub mod env {
             device_buffer.set_devicemem(mem);
             device_buffer.set_buffer(buffer);
 
-            // bind memory
             unsafe {
-                self.device
-                    .as_mut()
-                    .unwrap()
-                    .bind_buffer_memory(
-                        *device_buffer.buffer_ref().unwrap(),
-                        *device_buffer.device_mem_ref().unwrap(),
-                        0,
-                    )
-                    .expect("bind vk buffer_memory fail");
-            };
-            // map memory
-            unsafe {
-                if get!(
-                    &current_mem_properties.memory_types,
-                    memory_type_index as usize
-                )
-                .property_flags
-                .as_raw()
-                    & 0b10
-                    == vk::MemoryPropertyFlags::HOST_VISIBLE.as_raw()
-                {
-                    let _data_ptr = self
-                        .device
-                        .as_mut()
-                        .unwrap()
-                        .map_memory(
-                            *device_buffer.device_mem_mut().unwrap(),
-                            0,
-                            mem_size,
-                            vk::MemoryMapFlags::default(),
-                        )
-                        .expect("map vk buffer_memory fail");
-                } else {
-                    crate::send2logger_dev!(
-                        crate::log::code::TYPE_EXE_INFO
-                            | crate::log::code::CONDI_NOMAP_DEVICE_MEM_MODE
-                            | crate::log::code::FILE_RENDERER
-                            | crate::log::LogCodeD::new()
-                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                                .get_code()
-                            | crate::log::LogCodeD::new()
-                                .encode(
-                                    self.id as u128,
-                                    crate::log::LogPartFlag::LOGGER_PART_EXE_ID
-                                )
-                                .get_code()
-                    );
-                }
-
-                dev_stop!();
+                self.device.as_mut().unwrap().bind_buffer_memory(
+                    *device_buffer.buffer_ref().unwrap(),
+                    *device_buffer.device_mem_ref().unwrap(),
+                    0,
+                );
             };
         }
 
@@ -1046,7 +961,7 @@ pub mod env {
         // 1.创建
         // 2.销毁
         // 3.挂起
-        pub fn exe_vertex_buffer(
+        pub fn exe_vbo(
             &mut self,
             datum_vkbuf: &mut Datum<DeviceBuffer<vk::Buffer>>,
             datum_mesh: &mut Datum<MeshD>,
@@ -1498,7 +1413,6 @@ pub mod env {
                     .create_image(vk_img_format, Option::None)
                     .unwrap()
             };
-
             vk_render_img2surface_config.image = img;
             vk_render_img2surface_config.format = vk_img_format.format;
 
@@ -1511,7 +1425,17 @@ pub mod env {
                     .size
             };
 
-            let _surfbuf = SurfaceIMGBuffer::default().build_img(img);
+            dev_stop!();
+            let view = unsafe {
+                renderer_slice
+                    .device
+                    .as_mut()
+                    .unwrap()
+                    .create_image_view(&vk_render_img2surface_config, Option::None)
+                    .unwrap()
+            };
+
+            let _surfbuf = SurfaceIMGBuffer::default().build_img(img).build_view(view);
             let mut _buf: DeviceBuffer<SurfaceIMGBuffer> =
                 DeviceBuffer::<SurfaceIMGBuffer>::default()
                     .build_buffer(_surfbuf)
@@ -1524,14 +1448,14 @@ pub mod env {
                 &mut _buf,
             );
 
-            _buf.buffer_mut().unwrap().set_view(unsafe {
+            unsafe {
                 renderer_slice
                     .device
                     .as_mut()
                     .unwrap()
-                    .create_image_view(&vk_render_img2surface_config, Option::None)
-                    .unwrap()
-            });
+                    .bind_image_memory(*_buf.buffer_mut().unwrap().img_mut(), *_buf.device_mem_ref().unwrap(), 0)
+                    .expect("bind custom image_memory fail")
+            };
 
             datum.alloc_data(_buf, Option::None).end();
         }
@@ -1677,8 +1601,6 @@ pub mod env {
                 is_clip: true,
                 is_vertical_blank: false,
                 is_cube_surface: false,
-                is_performance_first: false,
-
                 cube_surface_width: 1,
                 device_queue_count: 0,
 
