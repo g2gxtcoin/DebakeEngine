@@ -397,7 +397,7 @@ pub mod env {
                 .unwrap()
                 .get_physical_device_features(self.vk_gpu_device.clone().unwrap());
             // here you see
-            //fk this is true!!!!! always no check!!!!
+            // fk this is true!!!!! always no check!!!!
             if true {
                 self.vk_logical_device_ext_names.as_mut().unwrap().push(pin);
                 self.vk_logical_device_info
@@ -694,7 +694,7 @@ pub mod env {
             }
         }
 
-        pub fn gueue_info_ref(&self) -> Result<&Vec<vk::QueueFamilyProperties>, ()> {
+        pub fn queue_info_ref(&self) -> Result<&Vec<vk::QueueFamilyProperties>, ()> {
             match self.vk_gpu_queue_families {
                 Some(ref i) => return std::result::Result::Ok(i),
                 None => {
@@ -762,6 +762,25 @@ pub mod env {
 
         pub fn gpu_properties_ref(&self) -> Result<&vk::PhysicalDeviceProperties, ()> {
             match self.vk_gpu_properties.as_ref() {
+                Some(s) => return std::result::Result::Ok(s),
+                None => {
+                    return Err(crate::log::sorry(
+                        crate::log::code::TYPE_EXT_ERROR
+                            | crate::log::code::CONDI_OPTION_NONE
+                            | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
+                            | crate::log::LogCodeD::new()
+                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                                .get_code()
+                            | crate::log::LogCodeD::new()
+                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
+                                .get_code(),
+                    ));
+                }
+            }
+        }
+
+        pub fn vk_gpu_device_ref(&self) -> Result<&vk::PhysicalDevice, ()> {
+            match self.vk_gpu_device.as_ref() {
                 Some(s) => return std::result::Result::Ok(s),
                 None => {
                     return Err(crate::log::sorry(

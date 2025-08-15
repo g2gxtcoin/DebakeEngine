@@ -81,9 +81,15 @@ pub mod env {
             return self;
         }
 
+        
         #[cfg(feature = "execute_use_subexe_false")]
         pub fn begin_execute(&mut self) {}
 
+        // to set inhernit exe step len.
+        // fench task from queue by CURRENT_EXE_TICK setting
+        // if CURRENT_EXE_TICK seting s 1, it mean proccess it transinite but Inefficient
+        // When you face some unexpected problem ,
+        // recommand use short CURRENT_EXE_TICK in order strictly ordering env.
         #[cfg(feature = "execute_use_subexe_true")]
         pub fn begin_execute(&mut self) {
             let len = self.queue.len();

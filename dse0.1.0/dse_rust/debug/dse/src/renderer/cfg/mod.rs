@@ -2,37 +2,68 @@
 #[cfg(feature = "env_bit_64bit")]
 #[allow(non_snake_case)]
 pub mod env {
-    use ash::vk::MemoryPropertyFlags;
+    pub mod RENDERER {
+        use ash::vk;
 
-    pub mod API_BUFFER{
-        use ash::vk::MemoryPropertyFlags;
+        #[cfg(feature = "config_DEFAULT_IS_PERFORMANCE_FIRST_true")]
+        pub const DEFAULT_IS_PERFORMANCE_FIRST: bool = false;
 
-        #[cfg(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_NO_DEVICE_LOCAL_BIT")]
-        pub const  SWITCH_HOST_LOCAL :u32= 0;
-        #[cfg(not(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_NO_DEVICE_LOCAL_BIT"))]
-        pub const SWITCH_HOST_LOCAL :u32= 1;
+        pub const DEFAULT_ERROR_COLOR1: [f32; 4] = [1.0, 0.0, 1.0, 1.0];
+        pub const DEFAULT_ERROR_COLOR2: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+        pub const DEFAULT_ERROR_COLOR: [vk::ClearValue; 2] = [
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: DEFAULT_ERROR_COLOR1,
+                },
+            },
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: DEFAULT_ERROR_COLOR2,
+                },
+            },
+        ];
+    }
+    pub mod CMMAND {
+        // #[cfg(feature = "config_DEFAULT_CMD_POOL_TYPE_TRANSIENT")]
+        // pub const DEFAULT_CMD_POOL_TYPE: u32 = 0b1;
+        // #[cfg(feature = "config_DEFAULT_CMD_POOL_TYPE_RESET")]
+        // pub const DEFAULT_CMD_POOL_TYPE: u32 = 0b10;
+        // #[cfg(feature = "config_DEFAULT_CMD_POOL_TYPE_PROTECTED")]
+        // pub const DEFAULT_CMD_POOL_TYPE: u32 = 0b100;
+    }
+
+    pub mod API_BUFFER {
+
+        #[cfg(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_DEVICE_LOCAL_BIT")]
+        pub const SWITCH_HOST_LOCAL: u32 = 0b1;
+        #[cfg(not(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_DEVICE_LOCAL_BIT"))]
+        pub const SWITCH_HOST_LOCAL: u32 = 0;
 
         #[cfg(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_HOST_VISIBLE_BIT")]
-        pub const  SWITCH_HOST_VISIBLE :u32= 1;
-        #[cfg(not( feature = "config_DEFAULT_MEM_PROPERTY_TYPE_HOST_VISIBLE_BIT"))]
-        pub const SWITCH_HOST_VISIBLE :u32= 0;
+        pub const SWITCH_HOST_VISIBLE: u32 = 0b10;
+        #[cfg(not(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_HOST_VISIBLE_BIT"))]
+        pub const SWITCH_HOST_VISIBLE: u32 = 0;
 
         #[cfg(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_HOST_COHERENT_BIT")]
-        pub const  SWITCH_HOST_COHERENT :u32= 1;
-        #[cfg(not( feature = "config_DEFAULT_MEM_PROPERTY_TYPE_HOST_COHERENT_BIT"))]
-        pub const SWITCH_HOST_COHERENT :u32= 0;
+        pub const SWITCH_HOST_COHERENT: u32 = 0b100;
+        #[cfg(not(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_HOST_COHERENT_BIT"))]
+        pub const SWITCH_HOST_COHERENT: u32 = 0;
 
         #[cfg(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_HOST_CACHED_BIT")]
-        pub const  SWITCH_HOST_CACHED :u32= 1;
-        #[cfg(not( feature = "config_DEFAULT_MEM_PROPERTY_TYPE_HOST_CACHED_BIT"))]
-        pub const SWITCH_HOST_CACHED :u32= 0;
+        pub const SWITCH_HOST_CACHED: u32 = 0b1000;
+        #[cfg(not(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_HOST_CACHED_BIT"))]
+        pub const SWITCH_HOST_CACHED: u32 = 0;
 
         #[cfg(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_LAZILY_ALLOCATED_BIT")]
-        pub const  SWITCH_LAZILY_ALLOCATED :u32= 1;
-        #[cfg(not( feature = "config_DEFAULT_MEM_PROPERTY_TYPE_LAZILY_ALLOCATED_BIT"))]
-        pub const SWITCH_LAZILY_ALLOCATED :u32= 0;
+        pub const SWITCH_LAZILY_ALLOCATED: u32 = 0b10000;
+        #[cfg(not(feature = "config_DEFAULT_MEM_PROPERTY_TYPE_LAZILY_ALLOCATED_BIT"))]
+        pub const SWITCH_LAZILY_ALLOCATED: u32 = 0;
 
-        pub const DEFAULT_MEMORY_PROPERTY: u32 = SWITCH_HOST_LOCAL | SWITCH_HOST_VISIBLE | SWITCH_HOST_COHERENT | SWITCH_HOST_CACHED | SWITCH_LAZILY_ALLOCATED;
+        pub const DEFAULT_MEMORY_PROPERTY: u32 = SWITCH_HOST_LOCAL
+            | SWITCH_HOST_VISIBLE
+            | SWITCH_HOST_COHERENT
+            | SWITCH_HOST_CACHED
+            | SWITCH_LAZILY_ALLOCATED;
     }
 
     pub mod RECT {

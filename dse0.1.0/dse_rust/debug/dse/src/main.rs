@@ -42,8 +42,11 @@ use model::{
 };
 use renderer::{
     buffer::env::{DeviceBuffer, DeviceBufferUsage, SurfaceIMGBuffer},
-    cmd::env::{CommandRenderE, RenderCmdTask},
-    env::{ RendererE, RendererTask},
+    cmd::{
+        self,
+        env::{CmdUsage, RenderCmdE, RenderCmdTask},
+    },
+    env::{RendererE, RendererTask},
     pipeline::env::{GraphicPipeLinePCO, GraphicPipeLinePSO, RenderPipelineD, RenderPipelineType},
 };
 use resource::env::ResourceE;
@@ -145,6 +148,10 @@ fn main() -> std::io::Result<()> {
     ////                                                ////
     ////////////////////////////////////////////////////////
 
+    //
+    // exe init
+    //
+
     exe.renderer1 = exe
         .renderer1
         .build_specify_handle(
@@ -154,9 +161,16 @@ fn main() -> std::io::Result<()> {
         .build_specify_api_base2create_surface(&mut dat.vk_api)
         .build_device_suitable_surface(&mut dat.vk_api)
         .build_swap_buffer(&mut dat.vk_api)
-        .build_cmd_pool()
         .build_set_pipeline_dynamic_state_auto();
 
+    exe.render_cmd1 = exe
+        .render_cmd1
+        .build_cmd_usage(CmdUsage::MANUAL_MODE | CmdUsage::SURPPORT_GRAPHIC)
+        .build_api_device(&dat.vk_api);
+
+    //
+    // dat alloc
+    //
     dat.surface_img
         .alloc_data(Datum::default(), Some(exe.renderer1.id))
         .end();
@@ -176,6 +190,9 @@ fn main() -> std::io::Result<()> {
         .alloc_data(Datum::default(), Some(exe.renderer1.id))
         .end();
 
+    //
+    // tak alloc
+    //
     tak.decoder_task
         .alloc_data(Default::default(), Some(exe.shader_decoder.id))
         .end();
@@ -183,8 +200,19 @@ fn main() -> std::io::Result<()> {
     tak.render_task
         .alloc_data(Default::default(), Some(exe.renderer1.id))
         .end();
+
+    tak.rendercmd_task
+        .alloc_data(Default::default(), Some(exe.render_cmd1.id))
+        .end();
+
+    //
+    // exe bind tak
+    //
     exe.renderer1
-        .link_task_queue(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
+        .bind_task_queue(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
+
+    exe.render_cmd1
+        .bind_task_queue(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -360,10 +388,8 @@ fn main() -> std::io::Result<()> {
         .build_render_pass(renderer::cfg::env::PSO::DEFAULT_RENDER_PASS)
         .build_push_subpass(renderer::cfg::env::PSO::DEFAULT_SUBPASS_DESCRIPTION)
         .build_push_shader_stages(dat.shader_mod.get_data_mut(exe.renderer1.id).unwrap())
-        // .build_push_vbd(crate::renderer::cfg::env::PSO::DEFAULT_VBD)
-        // .build_push_vad(
-        //     renderer::cfg::env::PSO::DEFAULT_VAD_4X4_RGBA64F,
-        // )
+        .build_push_vbd(crate::renderer::cfg::env::PSO::DEFAULT_VBD)
+        .build_push_vad(renderer::cfg::env::PSO::DEFAULT_VAD_4X4_RGBA64F)
         .build_valid_pso(dat.vk_api.gpu_properties_ref().unwrap());
     //todo!();
 
@@ -401,9 +427,7 @@ fn main() -> std::io::Result<()> {
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
-
     buf.shader_binary_code.release_buffer();
-
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -424,20 +448,12 @@ fn main() -> std::io::Result<()> {
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
-    // CBO
-    exe.renderer1.create_cmd_buffer(
-        dat.surface_img.get_data_index(exe.renderer1.id).unwrap(),
-        vk::CommandBufferLevel::PRIMARY.as_raw(),
-        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
-    );
-
     // VBO
     //todo!();
     exe.renderer1.create_vbo(
         &mut dat.vk_api,
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
-
 
     exe.renderer1.exe_vertex_buffer(
         dat.vertex_buf.get_data_mut(exe.renderer1.id).unwrap(),
@@ -449,9 +465,17 @@ fn main() -> std::io::Result<()> {
         &mut tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
-    exe.renderer1.exe_cmdbuffer(
+    // CBO
+    exe.renderer1.create_cmd_buffer(
+        dat.surface_img.get_data_index(exe.renderer1.id).unwrap(),
+        vk::CommandBufferLevel::PRIMARY.as_raw(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
+    );
+
+    exe.renderer1.exe_cmd_buffer(
         dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap(),
         &mut tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
+        &exe.render_cmd1,
     );
 
     ////////////////////////////////////////////////////////
@@ -460,24 +484,22 @@ fn main() -> std::io::Result<()> {
     ////                                                ////
     ////////////////////////////////////////////////////////
 
-    exe.render_cmd.link_renderer(&exe.renderer1);
-
-    exe.render_cmd
+    exe.render_cmd1
         .begin_cmd_sync(dat.cmd_buffer.get_data_ref(exe.renderer1.id).unwrap(), 0);
 
-    exe.render_cmd.bind_pipe_sync(
+    ________________dev_stop________________!();
+    // Error_todo
+
+    exe.render_cmd1.sync_bind_pipe(
+        0,
+        0,
         dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap(),
         dat.graphic_renderer_pipeline
             .get_data_mut(exe.renderer1.id)
             .unwrap(),
-        0,
-        0,
     );
 
-     dev_stop!();
-    // Error_todo
-
-    exe.render_cmd.begin_render_pass_sync(
+    exe.render_cmd1.sync_begin_render_pass(
         0,
         0,
         0,
@@ -488,14 +510,18 @@ fn main() -> std::io::Result<()> {
         dat.frame_buf.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
-    exe.render_cmd
-        .draw_sync(dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap());
+    ________________dev_stop________________!();
 
-    exe.render_cmd
-        .end_render_pass_sync(0, dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap());
+    exe.render_cmd1
+        .sync_draw(0, dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap());
+
+    ________________dev_stop________________!();
+
+    exe.render_cmd1
+        .sync_end_render_pass(0, dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap());
 
     // 记得重新开回来
-    //dev_stop!();
+    ________________dev_stop________________!();
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -513,7 +539,7 @@ fn main() -> std::io::Result<()> {
 
     let mut count = 0;
 
-    dev_stop!();
+    ________________dev_stop________________!();
 
     while unsafe { workarea::WORKAREA_CLOSE == false } {
         count = count + 1;
@@ -596,5 +622,5 @@ struct ExecuteM {
     shader_decoder: ShaderDecoderE,
     model: ModelE,
     renderer1: RendererE,
-    render_cmd: CommandRenderE,
+    render_cmd1: RenderCmdE,
 }

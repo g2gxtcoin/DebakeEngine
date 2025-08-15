@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 readme = "README.md"
 description = "A Rust game engine for Vulkan, supporting DOP frame work"
 repository = "https://github.com/z12456a/DebakeEngine"
+build = "build.rs"
 
 [lib]
 proc-macro = true
@@ -52,6 +53,8 @@ config = [
     "config_SOURCE_SHADER_TYPE",
     "config_MODEL",
     "config_DEFAULT_MEM_PROPERTY_TYPE",
+    "config_DEFAULT_CMD_POOL_TYPE",
+    "config_DEFAULT_IS_PERFORMANCE_FIRST",
 ]
 
 debake = ["debake_dev"]
@@ -266,12 +269,26 @@ config_MODEL_MAX_ATTECHMENT_NUM_16 = []
 config_MODEL_MAX_ATTECHMENT_NUM_8 = []
 
 
-config_DEFAULT_MEM_PROPERTY_TYPE = ["config_DEFAULT_MEM_PROPERTY_TYPE_HOST_VISIBLE_BIT"]
-config_DEFAULT_MEM_PROPERTY_TYPE_NO_DEVICE_LOCAL_BIT = []
+config_DEFAULT_MEM_PROPERTY_TYPE = [
+    "config_DEFAULT_MEM_PROPERTY_TYPE_DEVICE_LOCAL_BIT",
+    "config_DEFAULT_MEM_PROPERTY_TYPE_HOST_VISIBLE_BIT",
+    ]
+config_DEFAULT_MEM_PROPERTY_TYPE_DEVICE_LOCAL_BIT = []
 config_DEFAULT_MEM_PROPERTY_TYPE_HOST_VISIBLE_BIT = []
 config_DEFAULT_MEM_PROPERTY_TYPE_HOST_COHERENT_BIT = []
 config_DEFAULT_MEM_PROPERTY_TYPE_HOST_CACHED_BIT = []
 config_DEFAULT_MEM_PROPERTY_TYPE_LAZILY_ALLOCATED_BIT = []
+
+config_DEFAULT_IS_PERFORMANCE_FIRST = ["config_DEFAULT_IS_PERFORMANCE_FIRST_true"]
+config_DEFAULT_IS_PERFORMANCE_FIRST_true = []
+config_DEFAULT_IS_PERFORMANCE_FIRST_false = []
+
+config_DEFAULT_CMD_POOL_TYPE = [
+    "config_DEFAULT_CMD_POOL_TYPE_RESET",
+]
+config_DEFAULT_CMD_POOL_TYPE_PROTECTED = []
+config_DEFAULT_CMD_POOL_TYPE_TRANSIENT = []
+config_DEFAULT_CMD_POOL_TYPE_RESET = []
 
 
 std_use = ["std_use_LinkedList", "std_use_time"]

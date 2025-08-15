@@ -163,7 +163,7 @@ pub mod env {
     {
         fn default() -> Self {
             Self {
-                usage: DeviceBufferUsage::NONE | (crate::renderer::cfg::env::API_BUFFER::DEFAULT_MEMORY_PROPERTY as usize),
+                usage: DeviceBufferUsage::NONE | ( (crate::renderer::cfg::env::API_BUFFER::DEFAULT_MEMORY_PROPERTY << 24)as usize),
                 buffer: Default::default(),
                 device_mem: vk::DeviceMemory::null(),
             }
@@ -206,7 +206,7 @@ pub mod env {
 
     impl DeviceBufferUsage {
         pub const NONE: usize = 0x0;
-        pub const SURFACE_IMG: usize = 0x1;
+        pub const SURFACE_IMG: usize = 0x01;
         pub const VERTEX_BUFFER: usize = 0x02;
         pub const FRAME_BUFFER: usize = 0x03;
         pub const CMD_BUFFER: usize = 0x04;
@@ -218,8 +218,10 @@ pub mod env {
         pub const DEPTH: usize = 0x000002 << 16;
 
         pub const MEM_TYPE_LOCAL_HOST: usize = 0x00000001 << 24;
-        pub const MEM_TYPE_RAM_VISIBLE: usize = 0x00000002 << 24;
-        pub const MEM_TYPE_RAM_COHERENT: usize = 0x00000004 << 24;
+        //  设备运存_主存 只读映射。
+        pub const MEM_TYPE_RAM_VISIBLE: usize = 0x00000002 << 24; 
+        // 设备运存_主存 一致映射，主存中更改的数据将经队列提交后同步到设备运存中，有一定性能损耗。
+        pub const MEM_TYPE_RAM_COHERENT: usize = 0x00000004 << 24; 
         pub const MEM_TYPE_RAM_CACHED: usize = 0x00000008 << 24;
         pub const MEM_TYPE_RAM_UNVISIBLE: usize = 0x00000010 << 24;
         pub const MEM_TYPE_RAM_PROTECED: usize = 0x00000020 << 24;

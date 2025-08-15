@@ -71,6 +71,14 @@ pub fn MUL_PHYSICAL_SCALING(lhs: u64) -> u64 {
     return unsafe { ((lhs as f64) * (SCREEN_SCALING_FACTOR as f64) / 100.0).ceil() as u64 };
 }
 
+#[cfg(feature = "graphic_api_vulkan_1_3")]
+pub fn MUL_PHYSICAL_SCALING_MAT(lhs: ash::vk::Extent2D) -> ash::vk::Extent2D {
+    return ash::vk::Extent2D {
+        width: MUL_PHYSICAL_SCALING(lhs.width as u64) as u32,
+        height: MUL_PHYSICAL_SCALING(lhs.height as u64) as u32,
+    };
+}
+
 #[allow(non_snake_case)]
 pub fn VIRTUAL_WORKAREA_RECT() -> glam::U64Vec4 {
     return unsafe {

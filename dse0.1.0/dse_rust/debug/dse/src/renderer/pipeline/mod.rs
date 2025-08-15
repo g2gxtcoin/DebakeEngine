@@ -11,7 +11,7 @@ pub mod env {
         self, PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo, SubpassDescription,
     };
 
-    use crate::{dev_dbg, dev_stop, renderer::cfg};
+    use crate::{________________dev_stop________________, dev_dbg, renderer::cfg};
 
     use crate::{
         manager::datum::env::Datum, send2logger_dev, shader::env::ShaderModuleD,
@@ -444,6 +444,10 @@ pub mod env {
 
         pub fn pipeline_mut(&mut self) -> &mut vk::Pipeline {
             return self.pipeline.as_mut().unwrap();
+        }
+
+        pub fn pipeline_ref(&self) -> &vk::Pipeline {
+            return self.pipeline.as_ref().unwrap();
         }
 
         pub fn set_pipeline(&mut self, pin: vk::Pipeline) {
@@ -928,7 +932,7 @@ pub mod env {
             return vk::GraphicsPipelineCreateInfo {
                 s_type: vk::StructureType::GRAPHICS_PIPELINE_CREATE_INFO,
                 p_next: null(),
-                flags: Default::default(),
+                flags:  Default::default(),
                 stage_count: self.shader_stages.len() as u32,
                 p_stages: self.shader_stages.as_ptr(),
                 p_vertex_input_state: match self.states.vertex_input_state_mut() {
