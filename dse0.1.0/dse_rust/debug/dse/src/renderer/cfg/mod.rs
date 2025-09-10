@@ -1,11 +1,42 @@
 #[cfg(feature = "graphic_api_vulkan_1_3")]
 #[cfg(feature = "env_bit_64bit")]
 #[allow(non_snake_case)]
+#[allow(unused)]
 pub mod env {
     pub mod RENDERER {
         use ash::vk;
 
+        #[cfg(feature = "config_DEFAULT_RENDER_FPS_120")]
+        pub const DEFAULT_RENDER_FRAME_STRIDE: u64 = 1000_0000_00 / 120;
+        #[cfg(feature = "config_DEFAULT_RENDER_FPS_60")]
+        pub const DEFAULT_RENDER_FRAME_STRIDE: u64 = 1000_0000_00 / 60;
+        #[cfg(feature = "config_DEFAULT_RENDER_FPS_30")]
+        pub const DEFAULT_RENDER_FRAME_STRIDE: u64 = 1000_0000_00 / 30;
+        #[cfg(feature = "config_DEFAULT_RENDER_FPS_UNLIMITED")]
+        pub const DEFAULT_RENDER_FRAME_STRIDE: u64 = 0;
+
+        #[cfg(feature = "config_DEFAULT_LOGICAL_FPS_120")]
+        pub const DEFAULT_LOGICAL_FRAME_STRIDE: u64 = 1000_0000_00 / 120;
+        #[cfg(feature = "config_DEFAULT_LOGICAL_FPS_60")]
+        pub const DEFAULT_LOGICAL_FRAME_STRIDE: u64 = 1000_0000_00 / 60;
+        #[cfg(feature = "config_DEFAULT_LOGICAL_FPS_30")]
+        pub const DEFAULT_LOGICAL_FRAME_STRIDE: u64 = 1000_0000_00 / 30;
+        #[cfg(feature = "config_DEFAULT_LOGICAL_FPS_UNLIMITED")]
+        pub const DEFAULT_LOGICAL_FRAME_STRIDE: u64 = 0;
+
+        #[cfg(feature = "config_DEFAULT_PHYSICS_FPS_120")]
+        pub const DEFAULT_PHYSICS_FRAME_STRIDE: u64 = 1000_0000_00 / 120;
+        #[cfg(feature = "config_DEFAULT_PHYSICS_FPS_60")]
+        pub const DEFAULT_PHYSICS_FRAME_STRIDE: u64 = 1000_0000_00 / 60;
+        #[cfg(feature = "config_DEFAULT_PHYSICS_FPS_30")]
+        pub const DEFAULT_PHYSICS_FRAME_STRIDE: u64 = 1000_0000_00 / 30;
+        #[cfg(feature = "config_DEFAULT_PHYSICS_FPS_UNLIMITED")]
+        pub const DEFAULT_PHYSICS_FRAME_STRIDE: u64 = 0;
+
         #[cfg(feature = "config_DEFAULT_IS_PERFORMANCE_FIRST_true")]
+        pub const DEFAULT_IS_PERFORMANCE_FIRST: bool = true;
+
+        #[cfg(feature = "config_DEFAULT_IS_PERFORMANCE_FIRST_false")]
         pub const DEFAULT_IS_PERFORMANCE_FIRST: bool = false;
 
         pub const DEFAULT_ERROR_COLOR1: [f32; 4] = [1.0, 0.0, 1.0, 1.0];
@@ -220,7 +251,7 @@ pub mod env {
                 location: 0,
                 binding: 0,
                 format: vk::Format::R16G16B16A16_SFLOAT,
-                offset: 4 * 4 * 16,
+                offset: 0,
             };
 
         pub const DEFAULT_VAD_4X4_RGBA32F: VertexInputAttributeDescription =
@@ -228,7 +259,7 @@ pub mod env {
                 location: 0,
                 binding: 0,
                 format: vk::Format::R32G32B32A32_SFLOAT,
-                offset: 4 * 4 * 32,
+                offset: 0,
             };
 
         pub const DEFAULT_VAD_4X4_RGBA64F: VertexInputAttributeDescription =
@@ -236,7 +267,7 @@ pub mod env {
                 location: 0,
                 binding: 0,
                 format: vk::Format::R64G64B64A64_SFLOAT,
-                offset: 4 * 4 * 64,
+                offset: 0,
             };
 
         pub const DEFAULT_VBD: VertexInputBindingDescription = VertexInputBindingDescription {

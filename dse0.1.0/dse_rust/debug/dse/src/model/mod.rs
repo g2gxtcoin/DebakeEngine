@@ -26,7 +26,7 @@ pub static MODEL_MAX_ATTECHMENT_NUM: usize = 8;
 // ！！！！！！临时模块，测试使用，因改变频繁,后续将使用静态宏完成！！！！！
 // todo!();
 #[allow(unused)]
-pub mod global {
+pub mod mtid {
     // exe model type id
     pub const MTID_EXE_TIMER: u64 = 0;
     pub const MTID_EXE_WIN_INPUT: u64 = 1;
@@ -38,18 +38,19 @@ pub mod global {
     pub const MTID_EXE_RENDERER1: u64 = 7;
     pub const MTID_EXE_RENDER_CMD: u64 = 8;
 
-    // dat  model type id
+    // dat model type id
     pub const MTID_DAT_APPLICATION: u64 = 0;
     pub const MTID_DAT_VK_API: u64 = 1;
     pub const MTID_DAT_GRAPHIC_RENDERER_PIPELINE: u64 = 2;
     pub const MTID_DAT_CMD_BUFFER: u64 = 3;
-    pub const MTID_DAT_FBO: u64 = 4;
-    pub const MTID_DAT_VBO: u64 = 5;
+    pub const MTID_DAT_FRAME_BUF: u64 = 4;
+    pub const MTID_DAT_VERTEX_BUF: u64 = 5;
     pub const MTID_DAT_SURFACE_IMG: u64 = 6;
     pub const MTID_DAT_SHADER_MOD: u64 = 7;
     pub const MTID_DAT_MODEL: u64 = 8;
     pub const MTID_DAT_TRANSFORM: u64 = 9;
     pub const MTID_DAT_MESH: u64 = 10;
+    pub const MTID_DAT_RENDER_FNECE: u64 = 11;
 
     // tak model type id
     pub const MTID_TAK_RENDER_TASK: u64 = 0;
@@ -73,7 +74,7 @@ pub mod env {
         node::env::{NodeD, NodeT},
     };
 
-    use super::transform::env::TransformD;
+    use super::{transform::env::TransformD, MODEL_MAX_ATTECHMENT_NUM};
 
     pub enum ModelTask {
         None,
@@ -92,9 +93,24 @@ pub mod env {
         index_transform_task: u64,
     }
 
+    /// # Abstract
+    /// 模型附件
+    /// ## example
+    /**
+     */
+    /// ## parameter
+    /**
+     * attachment_index_buffer: 用于记录模型的附件类型 与 索引信息,
+     * index_child_offset: 内部变量 用于记录,
+     * index_offset: usize : 内部变量 用于记录,
+     * switch_transform_update: bool,
+     * is_active: bool
+     */
     #[repr(C, align(8))]
+    #[derive(Debug)]
+
     pub struct ModelAttachment {
-        attechments_index_buffer: [(u64, usize); super::MODEL_MAX_ATTECHMENT_NUM],
+        pub attechments_index_buffer: Vec<(u64, usize)>,
         index_child_offset: usize,
         index_offset: usize,
 
@@ -179,10 +195,11 @@ pub mod env {
     }
 
     #[repr(C, align(8))]
+    #[derive(Debug)]
     pub struct ModelD {
         //node_option
+        pub id: u64,
         attachment: ModelAttachment,
-        id: u64,
         node: NodeD,
     }
 
@@ -194,20 +211,42 @@ pub mod env {
                 attachment: Default::default(),
             }
         }
+        pub fn build_buf_capacity(mut self, capacity_in: usize) -> Self {
+            self.attachment.attechments_index_buffer = Vec::with_capacity(capacity_in);
+            return self;
+        }
 
         pub fn build_from_meta(mut self) -> Self {
             return self;
         }
 
-        /// record attachment
-        /// attechment_type: u64, index_in: usize
-        /// 绑定附件类型和索引
-        /// 该函数不建议用于绑定子模型
-        pub fn bind_attechment(&mut self, attechment_type: u64, index_in: usize) {
-            if self.attachment.index_offset < super::MODEL_MAX_ATTECHMENT_NUM {
-                self.attachment.attechments_index_buffer[self.attachment.index_offset] =
-                    (attechment_type, index_in);
-                self.attachment.index_offset = self.attachment.index_offset + 1;
+        /// -  record attachment
+        /// -  attechment_type: u64, index_in: usize
+        /// -  绑定附件类型和索引
+        /// -  会对类型进行重新排序
+        /// -  该函数虽然可以但不建议用于绑定子模型
+        pub fn push_attechment(&mut self, attechment_type: u64, index_in: usize) {
+            if self.attachment.attechments_index_buffer.capacity() == 0 {
+                self.attachment.attechments_index_buffer =
+                    Vec::with_capacity(super::MODEL_MAX_ATTECHMENT_NUM);
+                crate::send2logger_dev!(
+                    crate::log::code::TYPE_DAT_WARN
+                        | crate::log::code::CONDI_INIT_IMCOMPLETE
+                        | crate::log::code::FILE_MODEL
+                        | crate::log::LogCodeD::new()
+                            .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                            .get_code()
+                        | crate::log::LogCodeD::new()
+                            .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_DAT_ID)
+                            .get_code()
+                )
+            }
+            if self.attachment.attechments_index_buffer.len()
+                < self.attachment.attechments_index_buffer.capacity()
+            {
+                self.attachment
+                    .attechments_index_buffer
+                    .push((attechment_type, index_in));
             } else {
                 crate::send2logger_dev!(
                     crate::log::code::TYPE_DAT_ERROR
@@ -223,18 +262,47 @@ pub mod env {
             }
         }
 
+        /// - 啊 是的，你没有看错。
+        /// -  这玩意可以录入数据指针
+        /// -  当然，十分不建议两个模式混用
+        /// -  一般来说，还是推荐使用索引模式
+        pub fn push_pointer<T>(&mut self, attechment_type: u64, target_p: &T) {
+            let _p = target_p as *const T as usize;
+            self.push_attechment(attechment_type, _p);
+        }
+
+        pub fn contains_attechment(&self, attechment_type: u64, index_in: usize) -> bool {
+            todo!();
+        }
+
         /// 该函数用于绑定子模型
         pub fn bind_child(&mut self, index_in: usize) {
-            if self.attachment.index_offset < super::MODEL_MAX_ATTECHMENT_NUM {
-                self.attachment.attechments_index_buffer.swap(
-                    self.attachment.index_offset,
-                    self.attachment.index_child_offset,
-                );
-                self.attachment.attechments_index_buffer[self.attachment.index_child_offset] =
-                    (super::global::MTID_DAT_MODEL, index_in);
-
+            // check if init
+            if self.attachment.attechments_index_buffer.capacity() == 0 {
+                self.attachment.attechments_index_buffer =
+                    Vec::with_capacity(super::MODEL_MAX_ATTECHMENT_NUM);
+                crate::send2logger_dev!(
+                    crate::log::code::TYPE_DAT_WARN
+                        | crate::log::code::CONDI_INIT_IMCOMPLETE
+                        | crate::log::code::FILE_MODEL
+                        | crate::log::LogCodeD::new()
+                            .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                            .get_code()
+                        | crate::log::LogCodeD::new()
+                            .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_DAT_ID)
+                            .get_code()
+                )
+            }
+            //
+            let _len = self.attachment.attechments_index_buffer.len();
+            if _len < self.attachment.attechments_index_buffer.capacity() {
+                self.attachment
+                    .attechments_index_buffer
+                    .push((super::mtid::MTID_DAT_MODEL, index_in));
+                self.attachment
+                    .attechments_index_buffer
+                    .swap(_len - 1, self.attachment.index_child_offset);
                 self.attachment.index_child_offset = self.attachment.index_child_offset + 1;
-                self.attachment.index_offset = self.attachment.index_offset + 1;
             } else {
                 crate::send2logger_dev!(
                     crate::log::code::TYPE_DAT_ERROR
@@ -257,29 +325,15 @@ pub mod env {
         }
 
         /// 后进先出
-        /// 寻找第一个符合条件的附件
+        /// 寻找第一个符合条件的附件索引
+        /// 如果需要返回指针，请取出usize之后出去使用“cast_ref!(target_type, attr)投影至对应类型”
         pub fn get_attechment_index(&self, attechment_type: u64) -> Result<usize, ()> {
             let _r = self
                 .attachment
                 .attechments_index_buffer
                 .iter()
                 .find(|&&ti| ti.0 == attechment_type)
-                .unwrap_or({
-                    return Err(crate::send2logger_dev!(
-                        crate::log::code::TYPE_DAT_ERROR
-                            | crate::log::code::CONDI_OPTION_NONE
-                            | crate::log::code::FILE_MODEL
-                            | crate::log::LogCodeD::new()
-                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                                .get_code()
-                            | crate::log::LogCodeD::new()
-                                .encode(
-                                    self.id as u128,
-                                    crate::log::LogPartFlag::LOGGER_PART_DAT_ID
-                                )
-                                .get_code()
-                    ));
-                })
+                .unwrap()
                 .1;
             return Ok(_r);
         }
@@ -316,7 +370,7 @@ pub mod env {
     impl Default for ModelAttachment {
         fn default() -> Self {
             Self {
-                attechments_index_buffer: [(u64::MAX, usize::MAX); super::MODEL_MAX_ATTECHMENT_NUM],
+                attechments_index_buffer: Vec::with_capacity(MODEL_MAX_ATTECHMENT_NUM),
                 index_child_offset: 0,
                 index_offset: 0,
                 is_active: true,

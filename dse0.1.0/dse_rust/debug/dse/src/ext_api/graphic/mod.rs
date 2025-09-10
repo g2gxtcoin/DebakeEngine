@@ -478,7 +478,7 @@ pub mod env {
                             self.vk_logical_device_info.as_ref().unwrap(),
                             Option::None,
                         )
-                        .expect("msg"),
+                        .expect("device create failed"),
                 );
             } else {
                 crate::send2logger_dev!(
@@ -642,6 +642,25 @@ pub mod env {
                     return Err(crate::log::sorry(
                         crate::log::code::TYPE_EXT_ERROR
                             | crate::log::code::CONDI_VK_INSTANCE_NOT_FOUND
+                            | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
+                            | crate::log::LogCodeD::new()
+                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                                .get_code()
+                            | crate::log::LogCodeD::new()
+                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
+                                .get_code(),
+                    ));
+                }
+            }
+        }
+
+        pub fn ash_device_ref(&self) -> Result<&ash::Device, ()> {
+            match self.ash_device {
+                Some(ref val) => return std::result::Result::Ok(val),
+                None => {
+                    return Err(crate::log::sorry(
+                        crate::log::code::TYPE_EXT_ERROR
+                            | crate::log::code::CONDI_VK_DEVICE_NOT_FOUND
                             | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
                             | crate::log::LogCodeD::new()
                                 .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)

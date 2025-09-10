@@ -2,7 +2,7 @@
 #[macro_export]
 macro_rules! get {
     ( $vec:ident , $index:expr ) => {
-        unsafe{ $vec.get_unchecked($index)}
+        unsafe{ $vec.get_unchecked($index).unwrap_unchecked()}
     };
 }
 
@@ -10,7 +10,7 @@ macro_rules! get {
 #[macro_export]
 macro_rules! get_mut {
     ($vec:expr,$index:expr ) => {
-        unsafe{$vec.get_unchecked_mut($index)} 
+        unsafe{$vec.get_unchecked_mut($index).unwrap_unchecked()} 
     };
 }
 

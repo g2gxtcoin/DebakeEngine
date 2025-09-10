@@ -8,6 +8,7 @@ pub mod env {
     };
     use ash::vk::{self, DeviceMemory};
     use std::{fmt::Debug, usize};
+    use core::ffi::c_void;
 
     pub trait DeviceBufferTrait<BufferT> {
         fn usage_ref(&self) -> Result<usize, ()> {
@@ -101,6 +102,7 @@ pub mod env {
         pub usage: usize,
         buffer: BufferT,
         device_mem: vk::DeviceMemory,
+        mem_map_ptr: *mut c_void,
     }
 
     #[derive(Debug)]
@@ -166,6 +168,7 @@ pub mod env {
                 usage: DeviceBufferUsage::NONE | ( (crate::renderer::cfg::env::API_BUFFER::DEFAULT_MEMORY_PROPERTY << 24)as usize),
                 buffer: Default::default(),
                 device_mem: vk::DeviceMemory::null(),
+                mem_map_ptr: core::ptr::null_mut(),
             }
         }
     }
@@ -210,20 +213,24 @@ pub mod env {
         pub const VERTEX_BUFFER: usize = 0x02;
         pub const FRAME_BUFFER: usize = 0x03;
         pub const CMD_BUFFER: usize = 0x04;
-
+        //
         pub const UNIFORM: usize = 0x0001 << 8;
         pub const STORAGE: usize = 0x0002 << 8;
-        
+        //
         pub const COLOR: usize = 0x000001 << 16;
         pub const DEPTH: usize = 0x000002 << 16;
 
+        // 设备运存(显存)_主存 默认不映射，可手动开启。
         pub const MEM_TYPE_LOCAL_HOST: usize = 0x00000001 << 24;
-        //  设备运存_主存 只读映射。
-        pub const MEM_TYPE_RAM_VISIBLE: usize = 0x00000002 << 24; 
-        // 设备运存_主存 一致映射，主存中更改的数据将经队列提交后同步到设备运存中，有一定性能损耗。
-        pub const MEM_TYPE_RAM_COHERENT: usize = 0x00000004 << 24; 
+        // 设备运存_主存 可读映射，可手动提交更改数据。
+        pub const MEM_TYPE_RAM_VISIBLE: usize = 0x00000002 << 24;
+        // 设备运存_主存 一致映射，主存中更改的数据将经队列提交后自动同步到设备运存中，有一定性能损耗。
+        pub const MEM_TYPE_RAM_COHERENT: usize = 0x00000004 << 24;
+        // 设备运存_主存 缓存映射，设备运存中数据将经队列执行后自动同步到主存缓存区中，相比VISIBLE而言更高效但不及时。
         pub const MEM_TYPE_RAM_CACHED: usize = 0x00000008 << 24;
+        // 设备运存_主存 不映射，无法开启。
         pub const MEM_TYPE_RAM_UNVISIBLE: usize = 0x00000010 << 24;
+        // 设备运存_主存 主存保护模式，开启后所映射主存无法写入。
         pub const MEM_TYPE_RAM_PROTECED: usize = 0x00000020 << 24;
 
         pub const SURF_IMG_UNIFORM: usize = Self::SURFACE_IMG | Self::UNIFORM;

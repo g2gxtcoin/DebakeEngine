@@ -42,17 +42,20 @@ pub mod env {
     }
 
     impl TimerE {
+        /// use it to update timer
         pub fn fps(&mut self) -> f64 {
             let _now = self.get_programtime().as_micros();
-            println!("{_now}");
-            println!("{}", &self.last_time);
-            println!("{}", _now - &self.last_time);
-
             let _fps = f64::from(1000000.0 / ((_now - self.last_time) as f64));
 
-            println!("{}",&_fps);
             self.last_time = _now;
             return _fps;
+        }
+
+        pub fn delta_time_ns(&self) -> u64 {
+            let _now = self.get_programtime().as_micros();
+            let _r: u64 = (_now - self.last_time) as u64;
+
+            return _r;
         }
 
         pub fn set_id(&mut self, id_in: u64) {

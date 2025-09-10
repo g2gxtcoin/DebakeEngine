@@ -93,7 +93,7 @@ pub mod env {
             }
         }
     }
-
+ 
     impl<DT> Datum<DT> {
         pub fn vec_ref(&self) -> &Vec<Option<DT>> {
             return &self.data;
@@ -102,6 +102,13 @@ pub mod env {
         pub fn vec_mut(&mut self) -> &mut Vec<Option<DT>> {
             return &mut self.data;
         }
+
+        pub fn vec_some_clone(&self) ->Vec<DT> 
+        where DT: Clone{
+            let  _r:Vec<DT>  = self.data.iter().filter(|x| x.is_some()).map(|x| x.clone().unwrap()).collect();
+            return _r;
+        }
+
 
         pub fn iter(&self) -> DatumIter<'_, DT> {
             return DatumIter::<DT> {
@@ -280,7 +287,20 @@ pub mod env {
             }
         }
 
+        /// # Abstract
         /// 通过exeid 获取数据集自身索引
+        /// ## Example
+        /**
+         * 
+         */
+        /// ## Parameter
+        /// 
+        /// ## Also see
+        /// - 如果需要直接通过索引获取数据引用，请使用
+        /**
+         * get!(<datum>.vec_ref(),index); //or
+         * get_mut!(<datum>.vec_mut(),index);
+         */
         pub fn get_data_index(&self, id_in: u64) -> Result<usize, ()> {
             match self.register.iter().find(|&&x| x.0 == id_in) {
                 Some(val) => return Ok(val.1),

@@ -55,6 +55,7 @@ config = [
     "config_DEFAULT_MEM_PROPERTY_TYPE",
     "config_DEFAULT_CMD_POOL_TYPE",
     "config_DEFAULT_IS_PERFORMANCE_FIRST",
+    "config_DEFAULT_FPS",
 ]
 
 debake = ["debake_dev"]
@@ -290,6 +291,29 @@ config_DEFAULT_CMD_POOL_TYPE_PROTECTED = []
 config_DEFAULT_CMD_POOL_TYPE_TRANSIENT = []
 config_DEFAULT_CMD_POOL_TYPE_RESET = []
 
+config_DEFAULT_FPS = ["config_DEFAULT_RENDER_FPS","config_DEFAULT_LOGICAL_FPS","config_DEFAULT_PHYSICS_FPS"]
+config_DEFAULT_RENDER_FPS = ["config_DEFAULT_RENDER_FPS_UNLIMITED"]
+config_DEFAULT_LOGICAL_FPS = ["config_DEFAULT_LOGICAL_FPS_UNLIMITED"]
+config_DEFAULT_PHYSICS_FPS = ["config_DEFAULT_PHYSICS_FPS_UNLIMITED"]
+
+config_DEFAULT_RENDER_FPS_UNLIMITED = []
+config_DEFAULT_LOGICAL_FPS_UNLIMITED = []
+config_DEFAULT_PHYSICS_FPS_UNLIMITED = []
+
+config_DEFAULT_RENDER_FPS_120 = []
+config_DEFAULT_LOGICAL_FPS_120 = []
+config_DEFAULT_PHYSICS_FPS_120 = []
+
+config_DEFAULT_RENDER_FPS_60 = []
+config_DEFAULT_LOGICAL_FPS_60 = []
+config_DEFAULT_PHYSICS_FPS_60 = []
+
+config_DEFAULT_RENDER_FPS_30 = []
+config_DEFAULT_LOGICAL_FPS_30 = []
+config_DEFAULT_PHYSICS_FPS_30 = []
+
+
+
 
 std_use = ["std_use_LinkedList", "std_use_time"]
 std_use_LinkedList = []
@@ -316,7 +340,7 @@ version = "0.*"
 [dependencies.ash]
 features = ["loaded", "debug"]
 version = "0.37.*"
-#version = "0.38.*" // extension mod has been cancel,code need renew carefully
+#version = "0.38.*" # extension mod has been cancel,code need renew carefully
 
 [dependencies.walkdir]
 version = "2.3.*"

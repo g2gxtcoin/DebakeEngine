@@ -1,8 +1,10 @@
 use std::ffi;
 
-pub static SHADER_ENTRY_NAME: &'static str = "main";
-// pub static SHADER_ENTRY_NAME_RAW: &'static ffi::CStr =
-//     unsafe { ffi::CStr::from_bytes_with_nul_unchecked(b"aaa main\0") };
+pub static  DEFAULT_SHADER_ENTRY_NAME: &'static str = "main";
+/// - 专门用于 PipelineShaderStageCreateInfo的数据
+/// - PipelineShaderStageCreateInfo 中的 p_name 依据\0 进行检测末尾
+pub static SHADER_ENTRY_NAME_RAW: &'static ffi::CStr =
+    unsafe { ffi::CStr::from_bytes_with_nul_unchecked(b"main\0") };
 
 #[cfg(feature = "graphic_api_vulkan_1_3")]
 pub mod env {
@@ -12,7 +14,11 @@ pub mod env {
 
     use crate::convert::shader::env::ShaderResult;
 
-    use super::SHADER_ENTRY_NAME;
+    use super::DEFAULT_SHADER_ENTRY_NAME;
+
+    
+
+
 
     // use super::{SHADER_ENTRY_NAME, SHADER_ENTRY_NAME_RAW};
 
@@ -61,7 +67,7 @@ pub mod env {
                     flags: Default::default(),
                     stage: self.stage,
                     module: self.entity.unwrap(),
-                    p_name: SHADER_ENTRY_NAME.as_ptr() as *const i8,
+                    p_name: super::SHADER_ENTRY_NAME_RAW.as_ptr() as *const i8,
                     p_specialization_info: null(),
                 });
             }
@@ -94,6 +100,7 @@ pub mod env {
                 stage: Default::default(),
             };
         }
+
 
         pub fn build_source(mut self, sin: ShaderResult<Vec<u32>>) -> Self {
             self.source = Some(sin.get_source());

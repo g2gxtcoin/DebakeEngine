@@ -122,7 +122,7 @@ pub mod env {
                         &self.raw,
                         Self::_shader_stage_flags2kind(&self.stage),
                         &self.id.to_string(),
-                        crate::shader::SHADER_ENTRY_NAME,
+                        crate::shader::DEFAULT_SHADER_ENTRY_NAME,
                         Some(&_options),
                     )
                     .as_mut()

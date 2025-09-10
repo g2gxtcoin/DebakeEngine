@@ -863,20 +863,56 @@ pub mod env {
         }
 
         pub fn build_push_vbd(mut self, vbd_in: vk::VertexInputBindingDescription) -> Self {
+            let mut _vbd = vbd_in;
             match self.components.vertex_binding_description_mut() {
-                Ok(val) => val.push(vbd_in),
-                Err(_) => {}
+                Ok(val) => {
+                    _vbd.binding = val.len() as u32;
+                    val.push(_vbd);
+                }
+                Err(_) => {
+                    todo!();
+                }
             }
 
             return self;
         }
 
-        pub fn build_push_vad(mut self, vad_in: vk::VertexInputAttributeDescription) -> Self {
-            match self.components.vertex_attribute_description_mut() {
-                Ok(val) => val.push(vad_in),
-                Err(_) => {}
+        /// # Abstract
+        /// - 创建vad对象
+        /// - 于push_vbd之后调用
+        /// - binding参数设定为上一个vbd的binding
+        pub fn build_push_vad(
+            mut self,
+            vad_in: vk::VertexInputAttributeDescription,
+            location_in: Option<u32>,
+        ) -> Self {
+            // location
+            let mut _vad = vad_in;
+            if location_in.is_some() {
+                _vad.location = location_in.unwrap();
             }
+            // binding index
+            _vad.binding = self
+                .components
+                .vertex_binding_description_ref()
+                .unwrap()
+                .len() as u32
+                - 1;
+            // offset modify
+            _vad.offset = _vad.offset + self
+                .components
+                .vertex_binding_description_ref()
+                .unwrap()
+                .last()
+                .unwrap()
+                .stride;
 
+            match self.components.vertex_attribute_description_mut() {
+                Ok(val) => val.push(_vad),
+                Err(_) => {
+                    todo!();
+                }
+            }
             return self;
         }
 
@@ -932,7 +968,7 @@ pub mod env {
             return vk::GraphicsPipelineCreateInfo {
                 s_type: vk::StructureType::GRAPHICS_PIPELINE_CREATE_INFO,
                 p_next: null(),
-                flags:  Default::default(),
+                flags: Default::default(),
                 stage_count: self.shader_stages.len() as u32,
                 p_stages: self.shader_stages.as_ptr(),
                 p_vertex_input_state: match self.states.vertex_input_state_mut() {
@@ -1141,6 +1177,7 @@ pub mod env {
 
     impl Default for GraphicPipeLinePSO {
         fn default() -> Self {
+            dbg!(state_optional::DEFAULT_GRAPHIC_PIPELINE.clone());
             return state_optional::DEFAULT_GRAPHIC_PIPELINE.clone();
         }
     }

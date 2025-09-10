@@ -10,6 +10,10 @@ macro_rules! ________________dev_stop________________ {
             std::thread::sleep(std::time::Duration::new(u64::MAX, 0));
         }
     }};
+    ($msg:expr) =>{
+        println!($msg);
+        ________________dev_stop________________!();
+    }
 }
 
 #[cfg(feature = "debake_rt")]

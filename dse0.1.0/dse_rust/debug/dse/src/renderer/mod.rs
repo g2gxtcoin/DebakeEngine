@@ -10,18 +10,23 @@ pub mod pipeline;
 pub mod env {
 
     use crate::{
-        ________________dev_stop________________, dbg_dev, dev_dbg,
+        ________________dev_stop________________, cast_ref, dbg_dev, dev_dbg,
         ext_api::graphic::env::{name, VkAshAPID},
         get,
+        log::send2logger,
         manager::{
-            datum::env::Datum,
+            datum::{self, env::Datum},
             execute::{
                 env::TaskQueue,
                 template::call_back_template::{self},
             },
         },
-        model::mesh::{self, env::MeshD},
+        model::{
+            env::{ModelD, ModelE},
+            mesh::{self, env::MeshD},
+        },
         shader::env::ShaderModuleD,
+        time::env::TimerE,
         DatumM,
     };
     use ash::{
@@ -36,6 +41,7 @@ pub mod env {
     use std::{
         any::{Any, TypeId},
         fmt::Debug,
+        ops::Div,
         ptr::{null, null_mut},
     };
     use winapi::{
@@ -54,7 +60,7 @@ pub mod env {
                 IMG_FORMAT::{DEFAULT_COLOR_IMG, DEFAULT_DEPTH_IMG},
             },
         },
-        cmd::env::RenderCmdE,
+        cmd::{env::RenderCmdE, sync::env::CmdSyncD},
         pipeline::{
             self,
             env::{
@@ -68,13 +74,14 @@ pub mod env {
         None,
         PushCmdBuffer(
             usize, //dat cmd index
-            call_back_template::Callback2MR2R<
+            call_back_template::Callback1MR3R<
                 Datum<DeviceBuffer<vk::CommandBuffer>>,
                 ash::Device,
                 vk::CommandPool,
                 i32,
             >,
-            i32, // param: priority
+            vk::CommandPool, // param cmd pool
+            i32,             // param: priority
         ),
         CreateSurfaceImg(
             usize, // dat surface index
@@ -147,17 +154,20 @@ pub mod env {
         // ref: Datum<MeshD>,
         // 用途：获取并载入mesh数据
         CreateVBO(
-            call_back_template::Callback3MR2R<
+            usize, // usage
+            call_back_template::Callback4MR3R<
                 Datum<DeviceBuffer<vk::Buffer>>,
+                Datum<ModelD>,
                 Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
                 RendererE,
+                usize, // usage
                 Datum<MeshD>,
                 VkAshAPID,
             >,
         ),
 
         // 刷新顶点缓存映射
-        // 
+        //
         UpdateVBO(
             usize, // mesh index
             call_back_template::Callback3MR2R<
@@ -168,6 +178,12 @@ pub mod env {
                 VkAshAPID,
             >,
         ),
+
+        //
+        // MapMemoryBuffer(
+        //     usize,// target mem buffer index
+        //     Datum<>
+        // )
 
         // also see RenderCmdE
         #[deprecated = "Abandoned enum"]
@@ -183,7 +199,7 @@ pub mod env {
 
         // also see RenderCmdE
         #[deprecated = "Abandoned enum"]
-        BindVertexBuffer(
+        Bind_VBO(
             call_back_template::Callback3MR2R<
                 Datum<DeviceBuffer<vk::Buffer>>,
                 Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
@@ -193,7 +209,12 @@ pub mod env {
             >,
         ),
 
+        CreateFence(
+            bool, // is call in next frame
+            call_back_template::Callback2MR1R<Datum<CmdSyncD>, RendererE, bool>,
+        ),
 
+        WaitFences(call_back_template::Callback0MR2R<Datum<CmdSyncD>, RendererE>),
     }
 
     //
@@ -222,20 +243,22 @@ pub mod env {
         pub index_pipeline_task: u64,
         pub index_fbo_task: u64,
         pub index_vbo_task: u64,
-        pub index_bind_buffer_task: u64,
         pub index_cmd_task: u64,
+        pub index_fences_task: u64,
     }
 
     pub struct RendererE {
         pub id: u64,
+        pub frame_stride_ns: u64,
+
         pub renderer_attachment: RendererAttachment,
         pub wnd_handle: HWND,
         pub mod_handle: HINSTANCE,
 
-        pub device: Option<ash::Device>,
+        pub device_p: Option<usize>,
+        pub timer_p: Option<usize>,
 
-        pub gpu_properties: Option<ash::vk::PhysicalDeviceProperties>,
-
+        // pub gpu_properties: Option<ash::vk::PhysicalDeviceProperties>,
         pub swapchain: Option<vk::SwapchainKHR>,
         pub swapchain_create_info: Option<vk::SwapchainCreateInfoKHR>,
         pub swapchain_loader: Option<Swapchain>,
@@ -248,7 +271,8 @@ pub mod env {
         fn default() -> Self {
             return Self {
                 id: 0,
-                device: Option::None,
+                frame_stride_ns: cfg::env::RENDERER::DEFAULT_RENDER_FRAME_STRIDE,
+                device_p: Option::None,
                 swapchain: Option::None,
                 surface_create_info: Option::None,
                 wnd_handle: null_mut(),
@@ -259,7 +283,8 @@ pub mod env {
                 renderer_attachment: RendererAttachment::default(),
                 swapchain_create_info: Option::None,
 
-                gpu_properties: Option::None,
+                timer_p: Option::None,
+                // gpu_properties: Option::None,
             };
         }
     }
@@ -276,13 +301,18 @@ pub mod env {
             return Default::default();
         }
 
+        pub fn build_bind_timer_exe(mut self, timer_in: &TimerE) -> Self {
+            self.timer_p = Some(timer_in as *const TimerE as usize);
+            return self;
+        }
+
         pub fn build_set_performance_first(mut self, bool_in: bool) -> Self {
             self.renderer_attachment.is_performance_first = bool_in;
             return self;
         }
 
         pub fn build_gpu_properties(mut self, api_in: &mut VkAshAPID) -> Self {
-            self.gpu_properties = Option::Some(api_in.gpu_properties_clone().unwrap_or_default());
+            // self.gpu_properties = Option::Some(api_in.gpu_properties_clone().unwrap_or_default());
             return self;
         }
 
@@ -293,7 +323,7 @@ pub mod env {
         }
 
         pub fn build_specify_api_base2create_surface(mut self, api_in: &mut VkAshAPID) -> Self {
-            self.device = Option::Some(api_in.ash_device_clone().unwrap());
+            self.device_p = Some(api_in.ash_device_ref().unwrap() as *const ash::Device as usize);
             self.renderer_attachment.device_queue_count =
                 api_in.gpu_suitable_queue_count_currrent();
 
@@ -352,6 +382,11 @@ pub mod env {
             return self;
         }
 
+        pub fn build_fps(mut self, fps_in: u64) -> Self {
+            self.frame_stride_ns = 1000_0000.div(fps_in);
+            return self;
+        }
+
         pub fn build_api_surpport(mut self) -> Self {
             return self;
         }
@@ -396,7 +431,7 @@ pub mod env {
         pub fn build_swap_buffer(mut self, api_in: &mut VkAshAPID) -> Self {
             self.swapchain_loader = Some(Swapchain::new(
                 api_in.ash_instance_ref().unwrap(),
-                self.device.as_ref().unwrap(),
+                cast_ref!(ash::Device, self.device_p.unwrap()),
             ));
             let surface_capabilities = unsafe {
                 api_in
@@ -472,6 +507,8 @@ pub mod env {
                 false => &vk::PresentModeKHR::IMMEDIATE,
             };
 
+            dbg!(&surface_capabilities);
+
             self.swapchain_create_info = Option::Some(vk::SwapchainCreateInfoKHR {
                 s_type: vk::StructureType::SWAPCHAIN_CREATE_INFO_KHR,
                 p_next: null(),
@@ -527,7 +564,7 @@ pub mod env {
             return self;
         }
 
-        pub fn create_pipeline_layout(
+        pub fn tak_create_pipeline_layout(
             &mut self,
             pipe_type: RenderPipelineType,
             tin: &mut Datum<TaskQueue<RendererTask>>,
@@ -545,7 +582,7 @@ pub mod env {
             }
         }
 
-        pub fn create_graphic_pipeline_pass(&self, tin: &mut Datum<TaskQueue<RendererTask>>) {
+        pub fn tak_create_graphic_pipeline_pass(&self, tin: &mut Datum<TaskQueue<RendererTask>>) {
             tin.get_data_mut(self.renderer_attachment.index_pipeline_task)
                 .unwrap()
                 .push_task(RendererTask::CreateGraphicPipelinePass(
@@ -553,7 +590,7 @@ pub mod env {
                 ))
         }
 
-        pub fn create_graphic_pipeline(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
+        pub fn tak_create_graphic_pipeline(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
             tin.get_data_mut(self.renderer_attachment.index_pipeline_task)
                 .unwrap()
                 .push_task(RendererTask::CreateGraphicPipeline(
@@ -563,9 +600,10 @@ pub mod env {
 
         //#[deprecated = "abandoned feature"]
         // push new cmd buffer associate device in specify cmd buffer datum
-        pub fn create_cmd_buffer(
+        pub fn tak_create_cmd_buffer(
             &mut self,
-            cmd_index: usize,
+            buf_index: usize,
+            pool: vk::CommandPool,
             priority_level: i32,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
@@ -573,13 +611,14 @@ pub mod env {
             tin.get_data_mut(self.renderer_attachment.index_cmd_task)
                 .unwrap()
                 .push_task(RendererTask::PushCmdBuffer(
-                    cmd_index,
+                    buf_index,
                     Self::_callback_create_cmd_buffer,
+                    pool,
                     priority_level,
                 ))
         }
 
-        pub fn create_color_surface_img_view(
+        pub fn tak_create_color_surface_img_view(
             &mut self,
             surf_img_index: usize,
             priority: i32,
@@ -594,7 +633,7 @@ pub mod env {
                 ));
         }
 
-        pub fn create_custom_surface_img_view(
+        pub fn tak_create_custom_surface_img_view(
             &mut self,
             surf_img_index: usize,
             usage: usize,
@@ -609,7 +648,7 @@ pub mod env {
                 ));
         }
 
-        pub fn create_shader_module(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
+        pub fn tak_create_shader_module(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
             tin.get_data_mut(self.renderer_attachment.index_shader_mod_task)
                 .unwrap()
                 .push_task(RendererTask::CreateShaderMoudule(
@@ -617,37 +656,147 @@ pub mod env {
                 ));
         }
 
-        // 前置条件：
-        // 渲染管线
-        // 交换链
-        //
-        pub fn create_vbo(
+        pub fn tak_create_fence(
             &mut self,
-            api_in: &mut VkAshAPID,
+            call_in_next_frame: bool,
+            tin: &mut Datum<TaskQueue<RendererTask>>,
+        ) {
+            tin.get_data_mut(self.renderer_attachment.index_fences_task)
+                .unwrap()
+                .push_task(RendererTask::CreateFence(
+                    call_in_next_frame,
+                    Self::_callback_create_cmdsync,
+                ))
+        }
+
+        pub fn tak_wait_fences(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
+            tin.get_data_mut(self.renderer_attachment.index_fences_task)
+                .unwrap()
+                .push_task(RendererTask::WaitFences(Self::_callback_wait_fences));
+        }
+
+        pub fn exe_render_cmdsync(
+            &mut self,
+            datum_sync: &mut Datum<CmdSyncD>,
+            tin: &mut Datum<TaskQueue<RendererTask>>,
+        ) {
+            let mut _tasks = tin
+                .get_data_mut(self.renderer_attachment.index_fences_task)
+                .unwrap();
+            _tasks.begin_execute();
+            for ti in _tasks.task_iter_mut().unwrap() {
+                match task_interface::TaskTrait::task_mut(ti) {
+                    RendererTask::CreateFence(singal, call) => {
+                        call(datum_sync, self, singal);
+                    }
+                    RendererTask::WaitFences(call) => {
+                        call(datum_sync,self);
+                    }
+                    _ => {}
+                }
+            }
+            _tasks.end_execute();
+        }
+
+        fn _callback_create_cmdsync(
+            datum_sync: &mut Datum<CmdSyncD>,
+            renderer_slice: &mut RendererE,
+            call_in_next_frame: &bool,
+        ) {
+            let _info = vk::FenceCreateInfo {
+                s_type: vk::StructureType::FENCE_CREATE_INFO,
+                p_next: null(),
+                flags: match *call_in_next_frame {
+                    true => vk::FenceCreateFlags::SIGNALED,
+                    false => Default::default(),
+                },
+            };
+            for si in datum_sync
+                .vec_mut()
+                .iter_mut()
+                .filter(|x| x.as_ref().unwrap().attachment.id_renderer == renderer_slice.id)
+            {
+                let _fence = unsafe {
+                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                        .create_fence(&_info, Option::None)
+                        .unwrap()
+                };
+                si.as_mut().unwrap().fences_mut().push(_fence);
+            }
+        }
+
+        // uncommand
+        pub fn wait_fences(&self, datum_sync: &Datum<CmdSyncD>) {
+            Self::_callback_wait_fences(datum_sync, self);
+        }
+
+        fn _callback_wait_fences(datum_sync: &Datum<CmdSyncD>, renderer_slice: &RendererE) {
+            let _time_ref = cast_ref!(crate::time::env::TimerE, renderer_slice.timer_p.unwrap());
+            let _device_ref = cast_ref!(ash::Device, renderer_slice.device_p.unwrap());
+
+            let _wait_time: u64;
+            // judge if time out
+            if renderer_slice.frame_stride_ns > _time_ref.delta_time_ns() {
+                _wait_time = renderer_slice.frame_stride_ns - _time_ref.delta_time_ns();
+            } else {
+                _wait_time = 0;
+            }
+
+            unsafe {
+                for si in datum_sync.vec_ref() {
+                    _device_ref.wait_for_fences(
+                        si.as_ref().unwrap().fences_ref().as_slice(),
+                        false,
+                        _wait_time,
+                    ).unwrap();
+                }
+            }
+        }
+
+        /// # Abstract
+        /// - 创建顶点缓存对象
+        /// - 前置条件：渲染管线 交换链
+        /// ## Example
+        /**
+         * exe.renderer1.create_vbo(
+         *     DeviceBufferUsage::MEM_TYPE_RAM_COHERENT, // 指定内存映射方式:
+         *     tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
+         * );   
+         */
+        /// ## Parameter Explain
+        /**
+         * &mut self: renderer 的可变引用
+         * usage_in: DeviceBufferUsage 用于指定 内存映射方式
+         * tin: &mut Datum<TaskQueue<RendererTask>>
+         */
+        pub fn tak_create_vbo(
+            &mut self,
+            usage_in: usize,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             tin.get_data_mut(self.renderer_attachment.index_vbo_task)
                 .unwrap()
-                .push_task(RendererTask::CreateVBO(Self::_callback_create_vbo));
+                .push_task(RendererTask::CreateVBO(
+                    usage_in,
+                    Self::_callback_create_vbo,
+                ));
         }
 
-        // 前置条件：
-        // 渲染管线
-        // 交换链
-        //
-        pub fn create_fbo(&self, tin: &mut Datum<TaskQueue<RendererTask>>) {
+        /// 前置条件：
+        /// 渲染管线
+        /// 交换链
+        ///
+        pub fn tak_create_fbo(&self, tin: &mut Datum<TaskQueue<RendererTask>>) {
             tin.get_data_mut(self.renderer_attachment.index_fbo_task)
                 .unwrap()
                 .push_task(RendererTask::CreateFBO(Self::_callback_create_fbo))
         }
 
-
-        
         pub fn update_swapcahin(&mut self) {
             todo!();
         }
 
-        pub fn update_specific_vbo(
+        pub fn tak_update_specific_vbo(
             &mut self,
             mesh_index: usize,
             tin: &mut Datum<TaskQueue<RendererTask>>,
@@ -660,11 +809,33 @@ pub mod env {
                 ));
         }
 
-        pub fn map_vertex_buffer(&mut self){
-
+        /// # Abstract
+        /// - Abandoned feature
+        /// - Feature has include in create_vbo
+        /// - Define as your device_buffer_usage custom or device property default setting.
+        #[deprecated = "abandoned feature"]
+        pub fn tak_map_vertex_buffer(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
+            todo!();
+            // tin.get_data_mut(self.renderer_attachment.index_vbo_task)
+            //     .unwrap()
+            //     .push_task(RendererTask::MapVertexBuffer(
+            //         Self::_callback_map_vertex_buffer,
+            //     ));
         }
 
-        // create vk buffer
+        /// # Abstract
+        /// - 创建并分配 渲染器所需要使用缓存
+        /// - device memory 将在其中创建,并由device_buffer: &mut DeviceBuffer<vk::Buffer>参数输出.
+        /// ## Example
+        /**
+            renderer_slice.alloc_device_mem(
+                mesh.buffer_mem_size(),
+                vk::BufferUsageFlags::_,
+                *api_bind.gpu_mem_properties_current_ref().unwrap(),
+                &mut _vbo,
+            );
+        */
+        /// ## Parameter
         pub fn alloc_device_mem(
             &mut self,
             mem_size: u64,
@@ -688,9 +859,7 @@ pub mod env {
             };
 
             let buffer: vk::Buffer = unsafe {
-                self.device
-                    .as_mut()
-                    .unwrap()
+                cast_ref!(ash::Device, self.device_p.unwrap())
                     .create_buffer(&buffer_info, Option::None)
                     .unwrap()
             };
@@ -709,11 +878,9 @@ pub mod env {
                 memory_type_index: memory_type_index as u32,
             };
             let mem = unsafe {
-                self.device
-                    .as_mut()
-                    .unwrap()
+                cast_ref!(ash::Device, self.device_p.unwrap())
                     .allocate_memory(&_alloc_info, Option::None)
-                    .expect("Failed to allocate memory")
+                    .unwrap()
             };
 
             device_buffer.set_devicemem(mem);
@@ -721,55 +888,13 @@ pub mod env {
 
             // bind memory
             unsafe {
-                self.device
-                    .as_mut()
-                    .unwrap()
+                cast_ref!(ash::Device, self.device_p.unwrap())
                     .bind_buffer_memory(
                         *device_buffer.buffer_ref().unwrap(),
                         *device_buffer.device_mem_ref().unwrap(),
                         0,
                     )
                     .expect("bind vk buffer_memory fail");
-            };
-
-            // map memory
-            unsafe {
-                if get!(
-                    &current_mem_properties.memory_types,
-                    memory_type_index as usize
-                )
-                .property_flags
-                .as_raw()
-                    & 0b10
-                    == vk::MemoryPropertyFlags::HOST_VISIBLE.as_raw()
-                {
-                    let _data_ptr = self
-                        .device
-                        .as_mut()
-                        .unwrap()
-                        .map_memory(
-                            *device_buffer.device_mem_mut().unwrap(),
-                            0,
-                            mem_size,
-                            vk::MemoryMapFlags::default(),
-                        )
-                        .expect("map vk buffer_memory fail");
-                } else {
-                    crate::send2logger_dev!(
-                        crate::log::code::TYPE_EXE_INFO
-                            | crate::log::code::CONDI_NOMAP_DEVICE_MEM_MODE
-                            | crate::log::code::FILE_RENDERER
-                            | crate::log::LogCodeD::new()
-                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                                .get_code()
-                            | crate::log::LogCodeD::new()
-                                .encode(
-                                    self.id as u128,
-                                    crate::log::LogPartFlag::LOGGER_PART_EXE_ID
-                                )
-                                .get_code()
-                    );
-                }
             };
         }
 
@@ -800,12 +925,16 @@ pub mod env {
             );
             tqin.alloc_data(
                 TaskQueue::default(),
-                Some(self.renderer_attachment.index_bind_buffer_task),
+                Some(self.renderer_attachment.index_cmd_task),
             );
             tqin.alloc_data(
                 TaskQueue::default(),
-                Some(self.renderer_attachment.index_cmd_task),
+                Some(self.renderer_attachment.index_fences_task),
             );
+        }
+
+        pub fn bind_timer_exe(&mut self, timer_in: &TimerE) {
+            self.timer_p = Some(timer_in as *const TimerE as usize);
         }
 
         // 执行与 vertex buffer 相关所有指令
@@ -815,7 +944,8 @@ pub mod env {
         pub fn exe_vertex_buffer(
             &mut self,
             datum_vkbuf: &mut Datum<DeviceBuffer<vk::Buffer>>,
-            datum_mesh: &mut Datum<MeshD>,
+            datum_model: &mut Datum<ModelD>,
+            datum_mesh: &Datum<MeshD>,
             pipeline: &mut Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
             api_bind: &VkAshAPID,
             tin: &mut Datum<TaskQueue<RendererTask>>,
@@ -826,8 +956,16 @@ pub mod env {
             _tasks.begin_execute();
             for ti in _tasks.task_iter_mut().unwrap() {
                 match task_interface::TaskTrait::task_mut(ti) {
-                    RendererTask::CreateVBO(call) => {
-                        call(datum_vkbuf, pipeline, self, datum_mesh, api_bind);
+                    RendererTask::CreateVBO(uin, call) => {
+                        call(
+                            datum_vkbuf,
+                            datum_model,
+                            pipeline,
+                            self,
+                            uin,
+                            datum_mesh,
+                            api_bind,
+                        );
                     }
                     RendererTask::UpdateVBO(mesh_index, call) => {
                         call(
@@ -920,6 +1058,14 @@ pub mod env {
             _tasks.end_execute();
         }
 
+        pub fn exe_model(
+            &mut self,
+            data: &mut Datum<DeviceBuffer<ModelE>>,
+            tin: &mut Datum<TaskQueue<RendererTask>>,
+        ) {
+            todo!();
+        }
+
         /// #[deprecated = "Abandoned Feature"]
         /// Abandoned Feature
         /// also see same name feature in crate::renderer::cmd::RenderCmdE
@@ -927,7 +1073,6 @@ pub mod env {
             &mut self,
             data: &mut Datum<DeviceBuffer<vk::CommandBuffer>>,
             tin: &mut Datum<TaskQueue<RendererTask>>,
-            binding_cmd: &RenderCmdE, // cmd pool
         ) {
             let mut _tasks = tin
                 .get_data_mut(self.renderer_attachment.index_cmd_task)
@@ -937,10 +1082,10 @@ pub mod env {
             for ti in _tasks.task_iter_mut().unwrap() {
                 match task_interface::TaskTrait::task_ref(ti) {
                     RendererTask::None => {}
-                    RendererTask::PushCmdBuffer(index, call, priority_level) => call(
+                    RendererTask::PushCmdBuffer(index, call, pool, priority_level) => call(
                         data,
-                        self.device.as_mut().unwrap(),
-                        binding_cmd.pool_ref().unwrap(),
+                        cast_ref!(ash::Device, self.device_p.unwrap()),
+                        pool,
                         &priority_level,
                     ),
                     _ => {}
@@ -983,9 +1128,7 @@ pub mod env {
 
             // get mem requirement info from device by vk instance
             let mem_req: vk::MemoryRequirements = unsafe {
-                self.device
-                    .as_ref()
-                    .unwrap()
+                cast_ref!(ash::Device, self.device_p.unwrap())
                     .get_buffer_memory_requirements(*buf_in)
             };
             let default_type =
@@ -994,6 +1137,7 @@ pub mod env {
             let mut _r = 0;
             let mut _r_type_flag = 0;
 
+            // dev_dbg!(proper_in);
             for tei in proper_in.memory_types.iter().enumerate() {
                 if tei.1.property_flags.contains(default_type) {
                     if self.renderer_attachment.is_performance_first {
@@ -1033,9 +1177,7 @@ pub mod env {
             };
 
             let _vkbuffer: vk::Buffer = unsafe {
-                self.device
-                    .as_mut()
-                    .unwrap()
+                cast_ref!(ash::Device, self.device_p.unwrap())
                     .create_buffer(&buffer_info, Option::None)
                     .unwrap()
             };
@@ -1054,9 +1196,7 @@ pub mod env {
                 memory_type_index: memory_type_index as u32,
             };
             let mem = unsafe {
-                self.device
-                    .as_mut()
-                    .unwrap()
+                cast_ref!(ash::Device, self.device_p.unwrap())
                     .allocate_memory(&_alloc_info, Option::None)
                     .expect("Failed to allocate memory")
             };
@@ -1065,9 +1205,7 @@ pub mod env {
             surf_buffer.buffer_mut().unwrap().set_vkbuffer(_vkbuffer);
 
             unsafe {
-                self.device
-                    .as_mut()
-                    .unwrap()
+                cast_ref!(ash::Device, self.device_p.unwrap())
                     .bind_image_memory(
                         *surf_buffer.buffer_mut().unwrap().img_mut(),
                         *surf_buffer.device_mem_ref().unwrap(),
@@ -1177,10 +1315,7 @@ pub mod env {
 
                     unsafe {
                         _buf.set_buffer(
-                            renderer_slice
-                                .device
-                                .as_mut()
-                                .unwrap()
+                            cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                                 .create_framebuffer(&_info, Option::None)
                                 .unwrap(),
                         )
@@ -1205,7 +1340,7 @@ pub mod env {
                     pipeline::env::PipelineCreateInfoResult::None => {}
                     pipeline::env::PipelineCreateInfoResult::Graphic(val) => {
                         // 开发模式下打印 图形管线信息
-                        dev_dbg!(&val);
+                        // dev_dbg!(&val);
                         _pipeline_info_slice.push(val);
                     }
                     pipeline::env::PipelineCreateInfoResult::Compute(_) => {}
@@ -1214,10 +1349,7 @@ pub mod env {
             }
 
             let _pipelines = unsafe {
-                renderer_slice
-                    .device
-                    .as_mut()
-                    .unwrap()
+                cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                     .create_graphics_pipelines(
                         Default::default(),
                         _pipeline_info_slice.as_slice(),
@@ -1248,19 +1380,13 @@ pub mod env {
         {
             for pi in datum.iter_mut() {
                 let _layout = unsafe {
-                    renderer_slice
-                        .device
-                        .as_mut()
-                        .unwrap()
+                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                         .create_pipeline_layout(
                             pi.as_mut().unwrap().layout_create_info_ref(),
                             Option::None,
                         )
                         .unwrap_or(
-                            renderer_slice
-                                .device
-                                .as_mut()
-                                .unwrap()
+                            cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                                 .create_pipeline_layout(
                                     &cfg::env::PSO::DEFAULT_LAYOUT,
                                     Option::None,
@@ -1280,10 +1406,7 @@ pub mod env {
                 match si {
                     Some(val) => unsafe {
                         val.entity = Some(
-                            renderer_slice
-                                .device
-                                .as_mut()
-                                .unwrap()
+                            cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                                 .create_shader_module(&val.info, Option::None)
                                 .unwrap(),
                         )
@@ -1299,10 +1422,7 @@ pub mod env {
         ) {
             for pi in datum.iter_mut() {
                 let _pass = unsafe {
-                    renderer_slice
-                        .device
-                        .as_mut()
-                        .unwrap()
+                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                         .create_render_pass(
                             pi.as_ref()
                                 .unwrap()
@@ -1312,10 +1432,7 @@ pub mod env {
                             Option::None,
                         )
                         .unwrap_or(
-                            renderer_slice
-                                .device
-                                .as_mut()
-                                .unwrap()
+                            cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                                 .create_render_pass(
                                     &&crate::renderer::cfg::env::PSO::DEFAULT_RENDER_PASS,
                                     Option::None,
@@ -1366,10 +1483,7 @@ pub mod env {
                 .p_queue_family_indices;
             //  create IMG
             let img = unsafe {
-                renderer_slice
-                    .device
-                    .as_mut()
-                    .unwrap()
+                cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                     .create_image(vk_img_format, Option::None)
                     .unwrap()
             };
@@ -1378,10 +1492,7 @@ pub mod env {
             vk_render_img2surface_config.format = vk_img_format.format;
 
             let alloc_size = unsafe {
-                renderer_slice
-                    .device
-                    .as_mut()
-                    .unwrap()
+                cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                     .get_image_memory_requirements(img)
                     .size
             };
@@ -1400,10 +1511,7 @@ pub mod env {
             );
 
             _buf.buffer_mut().unwrap().set_view(unsafe {
-                renderer_slice
-                    .device
-                    .as_mut()
-                    .unwrap()
+                cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                     .create_image_view(&vk_render_img2surface_config, Option::None)
                     .unwrap()
             });
@@ -1460,19 +1568,13 @@ pub mod env {
                 // todo!(); // leak device buffer alloc
 
                 let view = unsafe {
-                    renderer_slice
-                        .device
-                        .as_mut()
-                        .unwrap()
+                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                         .create_image_view(&info, Option::None)
                         .unwrap()
                 };
 
                 let alloc_size = unsafe {
-                    renderer_slice
-                        .device
-                        .as_mut()
-                        .unwrap()
+                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                         .get_image_memory_requirements(imgi)
                         .size
                 };
@@ -1491,10 +1593,7 @@ pub mod env {
                 // );
 
                 unsafe {
-                    renderer_slice
-                        .device
-                        .as_mut()
-                        .unwrap()
+                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
                         .bind_image_memory(imgi, *_buf.device_mem_ref().unwrap(), 0)
                         .expect("bind custom image_memory fail")
                 };
@@ -1508,7 +1607,7 @@ pub mod env {
         /// also see crate::renderer::cmd::RenderCmdE
         fn _callback_create_cmd_buffer(
             datum: &mut Datum<DeviceBuffer<vk::CommandBuffer>>,
-            logical_device: &mut ash::Device,
+            logical_device: &ash::Device,
 
             pool: &vk::CommandPool,
             priority_level: &i32,
@@ -1545,24 +1644,136 @@ pub mod env {
             todo!();
         }
 
+        /// # Abstract
+        /// - Abandoned feature
+        /// - Feature has include in create_vbo
+        /// - Define as your device_buffer_usage custom or device property default setting.
+        #[deprecated = "abandoned feature"]
+        fn _callback_map_vertex_buffer(
+            &mut self,
+            datum_model: &mut Datum<DeviceBuffer<ModelE>>,
+            datum_mesh: &mut Datum<MeshD>,
+            datum_vkbuf: &mut Datum<DeviceBuffer<vk::Buffer>>,
+        ) {
+            todo!();
+        }
+
+        fn _callback_unmap_buffer_mem(&self) {
+            todo!();
+        }
+
+        fn _callback_unmap_buffer(
+            datum_buf: &mut Datum<DeviceBuffer<vk::Buffer>>,
+            datum_model: &mut Datum<ModelD>,
+            renderer_slice: &mut RendererE,
+            api_bind: &VkAshAPID,
+        ) {
+            todo!();
+        }
+
         fn _callback_create_vbo(
-            datum: &mut Datum<DeviceBuffer<vk::Buffer>>,
+            datum_buf: &mut Datum<DeviceBuffer<vk::Buffer>>,
+            datum_model: &mut Datum<ModelD>,
             pipeline: &mut Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
             renderer_slice: &mut RendererE,
+            usage_in: &usize,
             mesh_datum: &Datum<MeshD>,
             api_bind: &VkAshAPID,
         ) {
-            for mi in mesh_datum.vec_ref().iter() {
-                let mut _vbo: DeviceBuffer<vk::Buffer> = DeviceBuffer::default();
+            for mmi in datum_model.vec_mut().iter_mut() {
+                let mut _vbo: DeviceBuffer<vk::Buffer> =
+                    DeviceBuffer::default().build_usage(*usage_in);
+
+                let _mesh_index = mmi
+                    .as_ref()
+                    .unwrap()
+                    .get_attechment_index(crate::model::mtid::MTID_DAT_MESH)
+                    .unwrap();
+                let _mesh: &MeshD = get!(mesh_datum.vec_ref(), _mesh_index).as_ref().unwrap();
                 //分配顶点缓存
                 renderer_slice.alloc_device_mem(
-                    mi.as_ref().unwrap().buffer_mem_size(),
+                    _mesh.buffer_mem_size(),
                     vk::BufferUsageFlags::VERTEX_BUFFER,
                     *api_bind.gpu_mem_properties_current_ref().unwrap(),
                     &mut _vbo,
                 );
-                datum.alloc_data(_vbo, Option::None).end();
+
+                let mut _mem_p: *mut c_void = null_mut();
+                // 判断是否需要主存映射
+                unsafe {
+                    match usage_in & (0xff << 24) {
+                        DeviceBufferUsage::MEM_TYPE_LOCAL_HOST => {}
+                        DeviceBufferUsage::MEM_TYPE_RAM_PROTECED => {}
+                        DeviceBufferUsage::MEM_TYPE_RAM_UNVISIBLE => {}
+                        DeviceBufferUsage::MEM_TYPE_RAM_CACHED => {
+                            _mem_p = cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                                .map_memory(
+                                    *_vbo.device_mem_ref().unwrap(),
+                                    0,
+                                    _mesh.buffer_mem_size(),
+                                    vk::MemoryMapFlags::default(),
+                                )
+                                .unwrap();
+                        }
+                        DeviceBufferUsage::MEM_TYPE_RAM_VISIBLE => {
+                            _mem_p = cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                                .map_memory(
+                                    *_vbo.device_mem_ref().unwrap(),
+                                    0,
+                                    _mesh.buffer_mem_size(),
+                                    vk::MemoryMapFlags::default(),
+                                )
+                                .unwrap();
+                        }
+                        DeviceBufferUsage::MEM_TYPE_RAM_COHERENT => {
+                            _mem_p = cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                                .map_memory(
+                                    *_vbo.device_mem_ref().unwrap(),
+                                    0,
+                                    _mesh.buffer_mem_size(),
+                                    vk::MemoryMapFlags::default(),
+                                )
+                                .unwrap();
+                        }
+                        _ => {
+                            crate::send2logger_dev!(
+                                crate::log::code::TYPE_EXE_INFO
+                                    | crate::log::code::CONDI_NOMAP_DEVICE_MEM_MODE
+                                    | crate::log::code::FILE_RENDERER
+                                    | crate::log::LogCodeD::new()
+                                        .encode(
+                                            line!() as u128,
+                                            crate::log::LogPartFlag::LOGGER_PART_LINE
+                                        )
+                                        .get_code()
+                                    | crate::log::LogCodeD::new()
+                                        .encode(
+                                            mmi.as_ref().unwrap().id as u128,
+                                            crate::log::LogPartFlag::LOGGER_PART_EXE_ID
+                                        )
+                                        .get_code()
+                            );
+                        }
+                    }
+                    let _vbo_index = datum_buf.alloc_data(_vbo, Option::None).index();
+                    mmi.as_mut()
+                        .unwrap()
+                        .push_attechment(crate::model::mtid::MTID_DAT_VERTEX_BUF, _vbo_index);
+                }
             }
+
+            // for mi in mesh_datum.vec_ref().iter() {
+            //     let mut _vbo: DeviceBuffer<vk::Buffer> =
+            //         DeviceBuffer::default().build_usage(*usage_in);
+            //     //分配顶点缓存
+            //     renderer_slice.alloc_device_mem(
+            //         mi.as_ref().unwrap().buffer_mem_size(),
+            //         vk::BufferUsageFlags::VERTEX_BUFFER,
+            //         *api_bind.gpu_mem_properties_current_ref().unwrap(),
+            //         &mut _vbo,
+            //     );
+
+            // }
         }
 
         pub fn drop(mut self) {
@@ -1597,8 +1808,8 @@ pub mod env {
                 index_pipeline_task: 2,
                 index_fbo_task: 3,
                 index_vbo_task: 4,
-                index_bind_buffer_task: 5,
-                index_cmd_task: 6,
+                index_cmd_task: 5,
+                index_fences_task: 6,
             };
         }
     }
