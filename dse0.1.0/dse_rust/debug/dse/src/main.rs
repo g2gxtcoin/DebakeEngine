@@ -44,7 +44,8 @@ use renderer::{
     buffer::env::{DeviceBuffer, DeviceBufferUsage, SurfaceIMGBuffer},
     cmd::{
         self,
-        env::{CmdUsage, RenderCmdE, RenderCmdTask}, sync::env::CmdSyncD,
+        env::{CmdUsage, RenderCmdE, RenderCmdTask},
+        sync::env::CmdSyncD,
     },
     env::{RendererE, RendererTask},
     pipeline::env::{GraphicPipeLinePCO, GraphicPipeLinePSO, RenderPipelineD, RenderPipelineType},
@@ -166,7 +167,7 @@ fn main() -> std::io::Result<()> {
 
     exe.render_cmd1 = exe
         .render_cmd1
-        .build_cmd_usage(CmdUsage::MANUAL_MODE | CmdUsage::SURPPORT_GRAPHIC)
+        .build_cmd_usage(CmdUsage::MANUAL_MODE | CmdUsage::PIPE_GRAPHIC)
         .build_api_device(&dat.vk_api)
         .build_bind_renderer(&exe.renderer1);
 
@@ -176,7 +177,7 @@ fn main() -> std::io::Result<()> {
     dat.surface_img
         .alloc_data(Datum::default(), Some(exe.renderer1.id))
         .end();
-    dat.cmd_buffer
+    dat.cmd_buf
         .alloc_data(Datum::default(), Some(exe.renderer1.id))
         .end();
     dat.shader_mod
@@ -496,21 +497,9 @@ fn main() -> std::io::Result<()> {
     );
 
     exe.renderer1.exe_cmd_buffer(
-        dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
         &mut tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
-
-    ////////////////////////////////////////////////////////
-    ////                                                ////
-    ////            RENDERER COMMAND INIT               ////
-    ////                                                ////
-    ////////////////////////////////////////////////////////
-
-    exe.render_cmd1
-        .begin_cmd(dat.cmd_buffer.get_data_ref(exe.renderer1.id).unwrap(), 0);
-
-    ________________dev_stop________________!();
-    // Error_todo
 
     exe.renderer1.tak_create_fence(
         false,
@@ -525,32 +514,62 @@ fn main() -> std::io::Result<()> {
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
-    exe.render_cmd1.bind_render_pipe(
-        0,
-        0,
-        dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap(),
-        dat.graphic_renderer_pipeline
-            .get_data_mut(exe.renderer1.id)
-            .unwrap(),
+    ////////////////////////////////////////////////////////
+    ////                                                ////
+    ////            RENDERER COMMAND INIT               ////
+    ////                                                ////
+    ////////////////////////////////////////////////////////
+
+    exe.render_cmd1
+        .tak_begin_cmd(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
+
+    exe.render_cmd1.exe_cmd_buffer(
+        dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
+        tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
     );
 
-    exe.render_cmd1.begin_render_pass(
+    exe.render_cmd1
+        .tak_bind_render_pipe(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
+
+    exe.render_cmd1.tak_begin_render_pass(
         0,
-        0,
-        0,
+        tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
+    );
+
+    // exe.render_cmd1.begin_render_pass(
+    //     0,
+    //     dat.graphic_renderer_pipeline
+    //         .get_data_mut(exe.renderer1.id)
+    //         .unwrap(),
+    //     dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
+    //     dat.frame_buf.get_data_mut(exe.renderer1.id).unwrap(),
+    // );
+
+    exe.render_cmd1.exe_graphic_rander_pipeline(
         dat.graphic_renderer_pipeline
             .get_data_mut(exe.renderer1.id)
             .unwrap(),
-        dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
         dat.frame_buf.get_data_mut(exe.renderer1.id).unwrap(),
+        &mut tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
     );
+
+    exe.render_cmd1.exe_graphic_rander_pipeline(
+        dat.graphic_renderer_pipeline
+            .get_data_mut(exe.renderer1.id)
+            .unwrap(),
+        dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.frame_buf.get_data_mut(exe.renderer1.id).unwrap(),
+        &mut tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
+    );
+
 
     exe.render_cmd1.bind_specify_vertex(
         0,
         0,
         0,
         Option::None,
-        dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
         dat.graphic_renderer_pipeline
             .get_data_mut(exe.renderer1.id)
             .unwrap(),
@@ -563,16 +582,15 @@ fn main() -> std::io::Result<()> {
         dat.vertex_buf.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
-    ________________dev_stop________________!();
+    exe.render_cmd1
+        .draw(0, dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap());
 
     exe.render_cmd1
-        .draw(0, dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap());
+        .end_render_pass(0, dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap());
+
 
     exe.render_cmd1
-        .end_render_pass(0, dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap());
-
-    exe.render_cmd1
-        .end_cmd(0, dat.cmd_buffer.get_data_mut(exe.renderer1.id).unwrap());
+        .end_cmd(dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap());
 
     ________________dev_stop________________!();
 
@@ -608,7 +626,8 @@ fn main() -> std::io::Result<()> {
         buf.release();
 
         //std::thread::sleep(std::time::Duration::new(0, 001000_0000));
-        exe.renderer1.wait_fences(dat.sync.get_data_ref(exe.render_cmd1.id).unwrap());
+        exe.renderer1
+            .wait_fences(dat.sync.get_data_ref(exe.render_cmd1.id).unwrap());
         dbg!(exe.timer.fps());
 
         #[cfg(feature = "log_print_during_dev")]
@@ -655,7 +674,7 @@ struct DatumM {
     vk_api: VkAshAPID,
     graphic_renderer_pipeline:
         Datum<Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>>,
-    cmd_buffer: Datum<Datum<DeviceBuffer<vk::CommandBuffer>>>,
+    cmd_buf: Datum<Datum<DeviceBuffer<vk::CommandBuffer>>>,
     frame_buf: Datum<Datum<DeviceBuffer<vk::Framebuffer>>>,
     vertex_buf: Datum<Datum<DeviceBuffer<vk::Buffer>>>,
     surface_img: Datum<Datum<DeviceBuffer<SurfaceIMGBuffer>>>,

@@ -90,7 +90,7 @@ pub mod env {
 
     #[repr(C, align(8))]
     pub struct ModelExeAttachment {
-        index_transform_task: u64,
+        index_transform_task: usize,
     }
 
     /// # Abstract
@@ -141,10 +141,10 @@ pub mod env {
         }
 
         pub fn bind_task_queue(&mut self, tqin: &mut Datum<TaskQueue<ModelTask>>) {
-            tqin.alloc_data(
+            self.attachment.index_transform_task = tqin.alloc_data(
                 TaskQueue::default(),
-                Some(self.attachment.index_transform_task),
-            );
+                Option::None,
+            ).index();
         }
 
         pub fn update_global_transform_sync(

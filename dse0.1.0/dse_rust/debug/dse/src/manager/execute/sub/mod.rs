@@ -12,9 +12,15 @@ pub const EXECUTE_SUB_STEP_LEN: usize = 16; //60fps
 #[cfg(feature = "config_EXECUTE_SUB_STEP_LEN_32")]
 pub const EXECUTE_SUB_STEP_LEN: usize = 32; //30fps
 
-pub static mut CURRENT_EXE_TICK: u128 = 0;
+pub static mut CURRENT_EXE_TICK: u128 = u128::MAX;
 
-pub fn sub_exe_loop() -> bool {
+#[allow(non_snake_case)]
+pub fn INIT_EXE_SUBTICK(){
+    
+}
+
+#[allow(non_snake_case)]
+pub fn EXE_SUBTICK_LOOP() -> bool {
     unsafe {
         CURRENT_EXE_TICK = CURRENT_EXE_TICK + u128::try_from(EXECUTE_SUB_STEP_LEN).unwrap();
 

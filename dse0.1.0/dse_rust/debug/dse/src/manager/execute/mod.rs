@@ -24,7 +24,7 @@ pub mod env {
         id: u32,
         queue_len: usize,
         #[cfg(feature = "execute_use_subexe_true")]
-        offset: usize,
+        tick_offset: usize,
         is_subtime_sort: bool,
     }
 
@@ -33,7 +33,7 @@ pub mod env {
     where
         Task: Default,
     {
-        config: TaskQueueConfig,
+        attechment: TaskQueueConfig,
         #[cfg(feature = "execute_use_subexe_false")]
         queue: Vec<Task>,
         #[cfg(feature = "execute_use_subexe_true")]
@@ -71,38 +71,41 @@ pub mod env {
         pub fn build() -> Self {
             return Self {
                 queue: Vec::with_capacity(TASK_DEFAULT_QUEUE_LEN),
-                config: Default::default(),
+                attechment: Default::default(),
             };
         }
 
         pub fn build_reset_queue_len(mut self, size: usize) -> Self {
             self.queue = Vec::with_capacity(size);
-            self.config.queue_len = size;
+            self.attechment.queue_len = size;
             return self;
         }
 
-        
+        pub fn clear_queue(&mut self) {
+            self.queue.clear();
+        }
+
         #[cfg(feature = "execute_use_subexe_false")]
         pub fn begin_execute(&mut self) {}
 
-        // to set inhernit exe step len.
-        // fench task from queue by CURRENT_EXE_TICK setting
-        // if CURRENT_EXE_TICK seting s 1, it mean proccess it transinite but Inefficient
-        // When you face some unexpected problem ,
-        // recommand use short CURRENT_EXE_TICK in order strictly ordering env.
         #[cfg(feature = "execute_use_subexe_true")]
         pub fn begin_execute(&mut self) {
-            let len = self.queue.len();
-            let current = unsafe { crate::manager::execute::sub::CURRENT_EXE_TICK.clone() };
-            self.queue[(len - self.config.offset)..].sort_unstable_by_key(|x| x.1);
-            self.config.offset = self
-                .queue
-                .iter()
-                .enumerate()
-                .find(|x| x.1 .1 > current)
-                .unwrap()
-                .0;
-            self.config.is_subtime_sort = true;
+            if !self.queue.is_empty() {
+                let _len = self.queue.len();
+                let _current_tick =
+                    unsafe { crate::manager::execute::sub::CURRENT_EXE_TICK.clone() };
+                //self.queue[(_len - self.config.offset)..].sort_unstable_by_key(|x| x.1);
+                self.attechment.tick_offset = match self
+                    .queue
+                    .iter()
+                    .enumerate()
+                    .find(|x| x.1 .1 > _current_tick)
+                {
+                    Some(val) => val.0,
+                    None => _len - 1,
+                };
+                self.attechment.is_subtime_sort = true;
+            }
         }
 
         #[cfg(feature = "execute_use_subexe_false")]
@@ -112,11 +115,12 @@ pub mod env {
 
         #[cfg(feature = "execute_use_subexe_true")]
         pub fn end_execute(&mut self) {
-            let len = self.queue.len();
-            for i in 0..self.config.offset {
-                self.queue.remove(i);
+            if !self.queue.is_empty() {
+                for _i in 0..(self.attechment.tick_offset + 1) {
+                    self.queue.remove(0);
+                }
+                self.attechment.is_subtime_sort = false;
             }
-            self.config.is_subtime_sort = false;
         }
 
         // pub fn into_iter(&mut self)->TaskQueueIter<Task>{
@@ -139,7 +143,7 @@ pub mod env {
                     .unwrap()
                     .as_micros(),
             ));
-            self.config.is_subtime_sort = false;
+            self.attechment.is_subtime_sort = false;
         }
 
         pub fn len(&self) -> usize {
@@ -156,12 +160,17 @@ pub mod env {
 
         pub fn reset_queue_len(&mut self, size: usize) {
             self.queue = Vec::with_capacity(size);
-            self.config.queue_len = size;
+            self.attechment.queue_len = size;
         }
 
         #[cfg(feature = "execute_use_subexe_true")]
         pub fn task_iter_mut(&mut self) -> Result<core::slice::IterMut<(Task, u128)>, String> {
-            return Ok(self.queue.iter_mut());
+            if !self.queue.is_empty() {
+                return Ok(self.queue[0..self.attechment.tick_offset + 1].iter_mut());
+            }
+            else {
+                return Ok(self.queue.iter_mut())
+            }
         }
 
         #[cfg(feature = "execute_use_subexe_false")]
@@ -171,7 +180,12 @@ pub mod env {
 
         #[cfg(feature = "execute_use_subexe_true")]
         pub fn task_iter_clone(&mut self) -> Result<core::slice::IterMut<(Task, u128)>, String> {
-            return Ok(self.queue.iter_mut());
+                        if !self.queue.is_empty() {
+                return Ok(self.queue[0..self.attechment.tick_offset + 1].iter_mut());
+            }
+            else {
+                return Ok(self.queue.iter_mut())
+            }
         }
 
         #[cfg(feature = "execute_use_subexe_false")]
@@ -181,7 +195,12 @@ pub mod env {
 
         #[cfg(feature = "execute_use_subexe_true")]
         pub fn task_iter_ref(&self) -> Result<core::slice::Iter<(Task, u128)>, String> {
-            return Ok(self.queue.iter());
+                        if !self.queue.is_empty() {
+                return Ok(self.queue[0..self.attechment.tick_offset + 1].iter());
+            }
+            else {
+                return Ok(self.queue.iter())
+            }
         }
 
         #[cfg(feature = "execute_use_subexe_false")]
@@ -191,7 +210,7 @@ pub mod env {
 
         #[cfg(feature = "execute_use_subexe_true")]
         pub fn current_sub_task_iter_mut(&mut self) -> Result<core::slice::Iter<(Task, u128)>, ()> {
-            match self.config.is_subtime_sort {
+            match self.attechment.is_subtime_sort {
                 false => {
                     return Err(crate::log::sorry(
                         crate::log::code::TYPE_EXE_ERROR
@@ -201,19 +220,22 @@ pub mod env {
                                 .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
                                 .get_code()
                             | crate::log::LogCodeD::new()
-                                .encode(self.config.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                                .get_code()
+                                .encode(
+                                    self.attechment.id as u128,
+                                    crate::log::LogPartFlag::LOGGER_PART_EXE_ID,
+                                )
+                                .get_code(),
                     ));
                 }
                 true => {
-                    return Ok(self.queue[0..self.config.offset].iter());
+                    return Ok(self.queue[0..self.attechment.tick_offset].iter());
                 }
             }
         }
 
         #[cfg(feature = "execute_use_subexe_true")]
         pub fn current_sub_task_iter_ref(&self) -> Result<core::slice::Iter<(Task, u128)>, ()> {
-            match self.config.is_subtime_sort {
+            match self.attechment.is_subtime_sort {
                 false => {
                     return Err(crate::log::sorry(
                         crate::log::code::TYPE_EXE_ERROR
@@ -223,12 +245,15 @@ pub mod env {
                                 .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
                                 .get_code()
                             | crate::log::LogCodeD::new()
-                                .encode(self.config.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                                .get_code()
+                                .encode(
+                                    self.attechment.id as u128,
+                                    crate::log::LogPartFlag::LOGGER_PART_EXE_ID,
+                                )
+                                .get_code(),
                     ));
                 }
                 true => {
-                    return Ok(self.queue[0..self.config.offset].iter());
+                    return Ok(self.queue[0..self.attechment.tick_offset].iter());
                 }
             }
         }
@@ -249,7 +274,7 @@ pub mod env {
         fn default() -> Self {
             return Self {
                 queue: Vec::with_capacity(TASK_DEFAULT_QUEUE_LEN),
-                config: Default::default(),
+                attechment: Default::default(),
             };
         }
     }
@@ -260,7 +285,7 @@ pub mod env {
                 id: 0,
                 queue_len: TASK_DEFAULT_QUEUE_LEN,
                 #[cfg(feature = "execute_use_subexe_true")]
-                offset: 0,
+                tick_offset: 0,
                 is_subtime_sort: false,
             };
         }

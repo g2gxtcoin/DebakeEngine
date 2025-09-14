@@ -12,7 +12,7 @@ pub mod env {
     use crate::{
         ________________dev_stop________________, cast_ref, dbg_dev, dev_dbg,
         ext_api::graphic::env::{name, VkAshAPID},
-        get,
+        get, get_mut,
         log::send2logger,
         manager::{
             datum::{self, env::Datum},
@@ -72,7 +72,7 @@ pub mod env {
 
     pub enum RendererTask {
         None,
-        PushCmdBuffer(
+        CreateCmdBuffer(
             usize, //dat cmd index
             call_back_template::Callback1MR3R<
                 Datum<DeviceBuffer<vk::CommandBuffer>>,
@@ -237,14 +237,14 @@ pub mod env {
         pub cube_surface_width: u32, // 渲染表面深度
         pub device_queue_count: u32, // gpu 设备最大队列支持
 
-        pub index_surface_task: u64,
-        //pub index_cmd_task: u64,
-        pub index_shader_mod_task: u64,
-        pub index_pipeline_task: u64,
-        pub index_fbo_task: u64,
-        pub index_vbo_task: u64,
-        pub index_cmd_task: u64,
-        pub index_fences_task: u64,
+        pub index_surface_task: usize,
+        //pub index_cmd_task: usize,
+        pub index_shader_mod_task: usize,
+        pub index_pipeline_task: usize,
+        pub index_fbo_task: usize,
+        pub index_vbo_task: usize,
+        pub index_cmd_buffer_task: usize,
+        pub index_fences_task: usize,
     }
 
     pub struct RendererE {
@@ -507,7 +507,7 @@ pub mod env {
                 false => &vk::PresentModeKHR::IMMEDIATE,
             };
 
-            dbg!(&surface_capabilities);
+            // dbg!(&surface_capabilities);
 
             self.swapchain_create_info = Option::Some(vk::SwapchainCreateInfoKHR {
                 s_type: vk::StructureType::SWAPCHAIN_CREATE_INFO_KHR,
@@ -571,19 +571,22 @@ pub mod env {
         ) {
             match pipe_type {
                 RenderPipelineType::None => todo!(),
-                RenderPipelineType::Graphic => tin
-                    .get_data_mut(self.renderer_attachment.index_pipeline_task)
-                    .unwrap()
-                    .push_task(RendererTask::CreateGraphicPipelineLayout(
-                        Self::_callback_create_pipeline_layout,
-                    )),
+                RenderPipelineType::Graphic => {
+                    get_mut!(tin.vec_mut(), self.renderer_attachment.index_pipeline_task)
+                        .as_mut()
+                        .unwrap()
+                        .push_task(RendererTask::CreateGraphicPipelineLayout(
+                            Self::_callback_create_pipeline_layout,
+                        ))
+                }
                 RenderPipelineType::Compute => todo!(),
                 RenderPipelineType::RayTracing => todo!(),
             }
         }
 
         pub fn tak_create_graphic_pipeline_pass(&self, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.get_data_mut(self.renderer_attachment.index_pipeline_task)
+            get_mut!(tin.vec_mut(), self.renderer_attachment.index_pipeline_task)
+                .as_mut()
                 .unwrap()
                 .push_task(RendererTask::CreateGraphicPipelinePass(
                     Self::_callback_create_graphic_pipeline_pass,
@@ -591,15 +594,20 @@ pub mod env {
         }
 
         pub fn tak_create_graphic_pipeline(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.get_data_mut(self.renderer_attachment.index_pipeline_task)
+            get_mut!(tin.vec_mut(), self.renderer_attachment.index_pipeline_task)
+                .as_mut()
                 .unwrap()
                 .push_task(RendererTask::CreateGraphicPipeline(
                     Self::_callback_create_graphic_pipeline,
                 ))
         }
 
-        //#[deprecated = "abandoned feature"]
-        // push new cmd buffer associate device in specify cmd buffer datum
+        /// 创建命令缓冲
+        /// # Abstract
+        /// - index 0 is main cmd buffer
+        /// - index behine 0 are secondary cmd buffer
+        /// ## Example
+        /// ## Parameter
         pub fn tak_create_cmd_buffer(
             &mut self,
             buf_index: usize,
@@ -608,14 +616,18 @@ pub mod env {
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             //judge inherit task queue offset
-            tin.get_data_mut(self.renderer_attachment.index_cmd_task)
-                .unwrap()
-                .push_task(RendererTask::PushCmdBuffer(
-                    buf_index,
-                    Self::_callback_create_cmd_buffer,
-                    pool,
-                    priority_level,
-                ))
+            get_mut!(
+                tin.vec_mut(),
+                self.renderer_attachment.index_cmd_buffer_task
+            )
+            .as_mut()
+            .unwrap()
+            .push_task(RendererTask::CreateCmdBuffer(
+                buf_index,
+                Self::_callback_create_cmd_buffer,
+                pool,
+                priority_level,
+            ))
         }
 
         pub fn tak_create_color_surface_img_view(
@@ -624,7 +636,8 @@ pub mod env {
             priority: i32,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            tin.get_data_mut(self.renderer_attachment.index_surface_task)
+            get_mut!(tin.vec_mut(), self.renderer_attachment.index_surface_task)
+                .as_mut()
                 .unwrap()
                 .push_task(RendererTask::CreateSurfaceColorImg(
                     surf_img_index,
@@ -639,7 +652,8 @@ pub mod env {
             usage: usize,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            tin.get_data_mut(self.renderer_attachment.index_surface_task)
+            get_mut!(tin.vec_mut(), self.renderer_attachment.index_surface_task)
+                .as_mut()
                 .unwrap()
                 .push_task(RendererTask::CreateSurfaceImg(
                     surf_img_index,
@@ -649,11 +663,15 @@ pub mod env {
         }
 
         pub fn tak_create_shader_module(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.get_data_mut(self.renderer_attachment.index_shader_mod_task)
-                .unwrap()
-                .push_task(RendererTask::CreateShaderMoudule(
-                    Self::_callback_create_shader_moudule,
-                ));
+            get_mut!(
+                tin.vec_mut(),
+                self.renderer_attachment.index_shader_mod_task
+            )
+            .as_mut()
+            .unwrap()
+            .push_task(RendererTask::CreateShaderMoudule(
+                Self::_callback_create_shader_moudule,
+            ));
         }
 
         pub fn tak_create_fence(
@@ -661,7 +679,8 @@ pub mod env {
             call_in_next_frame: bool,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            tin.get_data_mut(self.renderer_attachment.index_fences_task)
+            get_mut!(tin.vec_mut(), self.renderer_attachment.index_fences_task)
+                .as_mut()
                 .unwrap()
                 .push_task(RendererTask::CreateFence(
                     call_in_next_frame,
@@ -670,7 +689,8 @@ pub mod env {
         }
 
         pub fn tak_wait_fences(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.get_data_mut(self.renderer_attachment.index_fences_task)
+            get_mut!(tin.vec_mut(), self.renderer_attachment.index_fences_task)
+                .as_mut()
                 .unwrap()
                 .push_task(RendererTask::WaitFences(Self::_callback_wait_fences));
         }
@@ -680,8 +700,8 @@ pub mod env {
             datum_sync: &mut Datum<CmdSyncD>,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            let mut _tasks = tin
-                .get_data_mut(self.renderer_attachment.index_fences_task)
+            let mut _tasks = get_mut!(tin.vec_mut(), self.renderer_attachment.index_fences_task)
+                .as_mut()
                 .unwrap();
             _tasks.begin_execute();
             for ti in _tasks.task_iter_mut().unwrap() {
@@ -690,7 +710,7 @@ pub mod env {
                         call(datum_sync, self, singal);
                     }
                     RendererTask::WaitFences(call) => {
-                        call(datum_sync,self);
+                        call(datum_sync, self);
                     }
                     _ => {}
                 }
@@ -744,11 +764,13 @@ pub mod env {
 
             unsafe {
                 for si in datum_sync.vec_ref() {
-                    _device_ref.wait_for_fences(
-                        si.as_ref().unwrap().fences_ref().as_slice(),
-                        false,
-                        _wait_time,
-                    ).unwrap();
+                    _device_ref
+                        .wait_for_fences(
+                            si.as_ref().unwrap().fences_ref().as_slice(),
+                            false,
+                            _wait_time,
+                        )
+                        .unwrap();
                 }
             }
         }
@@ -774,7 +796,8 @@ pub mod env {
             usage_in: usize,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            tin.get_data_mut(self.renderer_attachment.index_vbo_task)
+            get_mut!(tin.vec_mut(), self.renderer_attachment.index_vbo_task)
+                .as_mut()
                 .unwrap()
                 .push_task(RendererTask::CreateVBO(
                     usage_in,
@@ -787,7 +810,8 @@ pub mod env {
         /// 交换链
         ///
         pub fn tak_create_fbo(&self, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            tin.get_data_mut(self.renderer_attachment.index_fbo_task)
+            get_mut!(tin.vec_mut(), self.renderer_attachment.index_fbo_task)
+                .as_mut()
                 .unwrap()
                 .push_task(RendererTask::CreateFBO(Self::_callback_create_fbo))
         }
@@ -801,7 +825,8 @@ pub mod env {
             mesh_index: usize,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            tin.get_data_mut(self.renderer_attachment.index_vbo_task)
+            get_mut!(tin.vec_mut(), self.renderer_attachment.index_vbo_task)
+                .as_mut()
                 .unwrap()
                 .push_task(RendererTask::UpdateVBO(
                     mesh_index,
@@ -816,11 +841,6 @@ pub mod env {
         #[deprecated = "abandoned feature"]
         pub fn tak_map_vertex_buffer(&mut self, tin: &mut Datum<TaskQueue<RendererTask>>) {
             todo!();
-            // tin.get_data_mut(self.renderer_attachment.index_vbo_task)
-            //     .unwrap()
-            //     .push_task(RendererTask::MapVertexBuffer(
-            //         Self::_callback_map_vertex_buffer,
-            //     ));
         }
 
         /// # Abstract
@@ -898,39 +918,22 @@ pub mod env {
             };
         }
 
+        /// use proc macro to rebuild it
         pub fn bind_task_queue(&mut self, tqin: &mut Datum<TaskQueue<RendererTask>>) {
-            tqin.alloc_data(
-                TaskQueue::default(),
-                Some(self.renderer_attachment.index_surface_task),
-            );
-            // tqin.alloc_data(
-            //     TaskQueue::default(),
-            //     Some(self.renderer_attachment.index_cmd_task),
-            // );
-            tqin.alloc_data(
-                TaskQueue::default(),
-                Some(self.renderer_attachment.index_shader_mod_task),
-            );
-            tqin.alloc_data(
-                TaskQueue::default(),
-                Some(self.renderer_attachment.index_pipeline_task),
-            );
-            tqin.alloc_data(
-                TaskQueue::default(),
-                Some(self.renderer_attachment.index_fbo_task),
-            );
-            tqin.alloc_data(
-                TaskQueue::default(),
-                Some(self.renderer_attachment.index_vbo_task),
-            );
-            tqin.alloc_data(
-                TaskQueue::default(),
-                Some(self.renderer_attachment.index_cmd_task),
-            );
-            tqin.alloc_data(
-                TaskQueue::default(),
-                Some(self.renderer_attachment.index_fences_task),
-            );
+            self.renderer_attachment.index_surface_task =
+                tqin.alloc_data(TaskQueue::default(), Option::None).index();
+            self.renderer_attachment.index_shader_mod_task =
+                tqin.alloc_data(TaskQueue::default(), Option::None).index();
+            self.renderer_attachment.index_pipeline_task =
+                tqin.alloc_data(TaskQueue::default(), Option::None).index();
+            self.renderer_attachment.index_fbo_task =
+                tqin.alloc_data(TaskQueue::default(), Option::None).index();
+            self.renderer_attachment.index_vbo_task =
+                tqin.alloc_data(TaskQueue::default(), Option::None).index();
+            self.renderer_attachment.index_cmd_buffer_task =
+                tqin.alloc_data(TaskQueue::default(), Option::None).index();
+            self.renderer_attachment.index_fences_task =
+                tqin.alloc_data(TaskQueue::default(), Option::None).index();
         }
 
         pub fn bind_timer_exe(&mut self, timer_in: &TimerE) {
@@ -950,8 +953,8 @@ pub mod env {
             api_bind: &VkAshAPID,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            let mut _tasks = tin
-                .get_data_mut(self.renderer_attachment.index_vbo_task)
+            let mut _tasks = get_mut!(tin.vec_mut(), self.renderer_attachment.index_vbo_task)
+                .as_mut()
                 .unwrap();
             _tasks.begin_execute();
             for ti in _tasks.task_iter_mut().unwrap() {
@@ -990,8 +993,8 @@ pub mod env {
             datum_pipeline: &mut Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            let mut _tasks = tin
-                .get_data_mut(self.renderer_attachment.index_fbo_task)
+            let mut _tasks = get_mut!(tin.vec_mut(), self.renderer_attachment.index_fbo_task)
+                .as_mut()
                 .unwrap();
             _tasks.begin_execute();
             for ti in _tasks.task_iter_mut().unwrap() {
@@ -1010,9 +1013,12 @@ pub mod env {
             datum: &mut Datum<ShaderModuleD>,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            let mut _task = tin
-                .get_data_mut(self.renderer_attachment.index_shader_mod_task)
-                .unwrap();
+            let mut _task = get_mut!(
+                tin.vec_mut(),
+                self.renderer_attachment.index_shader_mod_task
+            )
+            .as_mut()
+            .unwrap();
             _task.begin_execute();
             for ti in _task.task_iter_mut().unwrap() {
                 match task_interface::TaskTrait::task_mut(ti) {
@@ -1029,8 +1035,8 @@ pub mod env {
             api_in: &mut VkAshAPID,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            let mut _tasks = tin
-                .get_data_mut(self.renderer_attachment.index_surface_task)
+            let mut _tasks = get_mut!(tin.vec_mut(), self.renderer_attachment.index_surface_task)
+                .as_mut()
                 .unwrap();
             _tasks.begin_execute();
             // let self_rc=Rc::new(RefCell::new(self)) ;
@@ -1074,15 +1080,18 @@ pub mod env {
             data: &mut Datum<DeviceBuffer<vk::CommandBuffer>>,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            let mut _tasks = tin
-                .get_data_mut(self.renderer_attachment.index_cmd_task)
-                .unwrap();
+            let mut _tasks = get_mut!(
+                tin.vec_mut(),
+                self.renderer_attachment.index_cmd_buffer_task
+            )
+            .as_mut()
+            .unwrap();
 
             _tasks.begin_execute();
             for ti in _tasks.task_iter_mut().unwrap() {
                 match task_interface::TaskTrait::task_ref(ti) {
                     RendererTask::None => {}
-                    RendererTask::PushCmdBuffer(index, call, pool, priority_level) => call(
+                    RendererTask::CreateCmdBuffer(index, call, pool, priority_level) => call(
                         data,
                         cast_ref!(ash::Device, self.device_p.unwrap()),
                         pool,
@@ -1099,8 +1108,8 @@ pub mod env {
             data: &mut Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
-            let mut _task = tin
-                .get_data_mut(self.renderer_attachment.index_pipeline_task)
+            let mut _task = get_mut!(tin.vec_mut(), self.renderer_attachment.index_pipeline_task)
+                .as_mut()
                 .unwrap();
             _task.begin_execute();
             for ti in _task.task_iter_mut().unwrap() {
@@ -1602,9 +1611,8 @@ pub mod env {
             }
         }
 
-        //#[deprecated = "Abandoned Feature"]
-        /// Abandoned Feature
         /// also see crate::renderer::cmd::RenderCmdE
+        ///
         fn _callback_create_cmd_buffer(
             datum: &mut Datum<DeviceBuffer<vk::CommandBuffer>>,
             logical_device: &ash::Device,
@@ -1802,14 +1810,14 @@ pub mod env {
                 cube_surface_width: 1,
                 device_queue_count: 0,
 
-                index_surface_task: 0,
+                index_surface_task: usize::MAX,
                 // index_cmd_task: 1,
-                index_shader_mod_task: 1,
-                index_pipeline_task: 2,
-                index_fbo_task: 3,
-                index_vbo_task: 4,
-                index_cmd_task: 5,
-                index_fences_task: 6,
+                index_shader_mod_task: usize::MAX,
+                index_pipeline_task: usize::MAX,
+                index_fbo_task: usize::MAX,
+                index_vbo_task: usize::MAX,
+                index_cmd_buffer_task: usize::MAX,
+                index_fences_task: usize::MAX,
             };
         }
     }

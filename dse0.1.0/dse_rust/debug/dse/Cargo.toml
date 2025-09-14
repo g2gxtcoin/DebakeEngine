@@ -129,7 +129,7 @@ log_prf_profile = ["log_prf_profile_off"]
 log_prf_profile_on = []
 log_prf_profile_off = []
 
-vk_debug = ["vk_debug_true", "vk_debug_print2console"]
+vk_debug = ["vk_debug_false", "vk_debug_print2console"]
 vk_debug_false = []
 vk_debug_print2console = []
 vk_debug_true = []

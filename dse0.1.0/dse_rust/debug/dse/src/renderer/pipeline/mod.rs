@@ -1177,7 +1177,7 @@ pub mod env {
 
     impl Default for GraphicPipeLinePSO {
         fn default() -> Self {
-            dbg!(state_optional::DEFAULT_GRAPHIC_PIPELINE.clone());
+            // dbg!(state_optional::DEFAULT_GRAPHIC_PIPELINE.clone());
             return state_optional::DEFAULT_GRAPHIC_PIPELINE.clone();
         }
     }

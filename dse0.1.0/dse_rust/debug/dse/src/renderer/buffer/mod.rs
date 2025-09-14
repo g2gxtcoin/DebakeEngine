@@ -102,7 +102,7 @@ pub mod env {
         pub usage: usize,
         buffer: BufferT,
         device_mem: vk::DeviceMemory,
-        mem_map_ptr: *mut c_void,
+        mem_map_p: Option<usize>,
     }
 
     #[derive(Debug)]
@@ -168,7 +168,7 @@ pub mod env {
                 usage: DeviceBufferUsage::NONE | ( (crate::renderer::cfg::env::API_BUFFER::DEFAULT_MEMORY_PROPERTY << 24)as usize),
                 buffer: Default::default(),
                 device_mem: vk::DeviceMemory::null(),
-                mem_map_ptr: core::ptr::null_mut(),
+                mem_map_p: Option::None,
             }
         }
     }

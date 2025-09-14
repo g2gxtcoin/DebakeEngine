@@ -417,4 +417,5 @@ fn test_bit_proccesss() {
 
 #[cfg(feature = "test")]
 #[test]
-fn test() {}
+fn test() {
+}
