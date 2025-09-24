@@ -21,11 +21,7 @@ pub mod env {
     use winapi::um::libloaderapi::GetModuleHandleW;
     use winapi::um::wingdi::{DEVMODEA, LPDEVMODEA};
     use winapi::um::winuser::{
-        self, CreateWindowExW, DefWindowProcW, DestroyWindow, EnumDisplaySettingsA,
-        GetDesktopWindow, GetMonitorInfoA, GetWindowInfo, GetWindowRect, MessageBoxExW,
-        MonitorFromWindow, PostQuitMessage, RegisterClassExW, SetWindowPos, ShowWindow,
-        UpdateWindow, ENUM_CURRENT_SETTINGS, LPMONITORINFO, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
-        WINDOWINFO, WM_COMMAND, WM_DESTROY,
+        self, CreateWindowExW, DefWindowProcW, DestroyWindow, EnumDisplaySettingsA, GetDesktopWindow, GetMonitorInfoA, GetWindowInfo, GetWindowRect, MessageBoxExW, MonitorFromWindow, PostQuitMessage, RegisterClassExW, SetWindowPos, SetWindowTextW, ShowWindow, UpdateWindow, ENUM_CURRENT_SETTINGS, LPMONITORINFO, MONITORINFO, MONITOR_DEFAULTTOPRIMARY, WINDOWINFO, WM_COMMAND, WM_DESTROY
     };
     use winapi::um::winuser::{
         CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, SW_SHOW, WM_CLOSE, WM_PAINT, WNDCLASSEXW,
@@ -165,6 +161,14 @@ pub mod env {
         pub fn link_app(&mut self, app_refin: &ApplicationD) {
             self.win_name = Option::Some(app_refin.get_app_name_clone());
             self.win_name_w16 = Option::Some(WString::from_str(self.win_name.as_ref().unwrap()));
+        }
+        
+        pub fn update_win_title(&mut self, title: String) {
+            let _s = &(self.win_name.clone().unwrap() + &title);
+            self.win_name_w16 = Option::Some(WString::from_str(_s));
+            unsafe {
+                SetWindowTextW(self.wnd_handle.unwrap(), self.win_name_w16.as_ref().unwrap().as_ptr());
+            }
         }
 
         fn create_winclass(&mut self) {

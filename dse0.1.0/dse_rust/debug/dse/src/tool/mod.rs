@@ -6,3 +6,5 @@ pub mod ext_lib_debug;
 pub mod debug;
 
 pub mod cast;
+
+pub mod slice;

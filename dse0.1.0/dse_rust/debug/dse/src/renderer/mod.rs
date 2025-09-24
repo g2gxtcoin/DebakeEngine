@@ -13,6 +13,7 @@ pub mod env {
         ________________dev_stop________________, cast_ref, dbg_dev, dev_dbg,
         ext_api::graphic::env::{name, VkAshAPID},
         get, get_mut,
+        hardware::{self, gpu::env::DseGPU},
         log::send2logger,
         manager::{
             datum::{self, env::Datum},
@@ -27,6 +28,7 @@ pub mod env {
         },
         shader::env::ShaderModuleD,
         time::env::TimerE,
+        tool::slice,
         DatumM,
     };
     use ash::{
@@ -46,7 +48,10 @@ pub mod env {
     };
     use winapi::{
         ctypes::c_void,
-        shared::{minwindef::HINSTANCE, windef::HWND},
+        shared::{
+            minwindef::{FALSE, HINSTANCE},
+            windef::HWND,
+        },
     };
 
     use crate::manager::execute::sub::task_interface::{self};
@@ -155,7 +160,8 @@ pub mod env {
         // 用途：获取并载入mesh数据
         CreateVBO(
             usize, // usage
-            call_back_template::Callback4MR3R<
+            bool,  // switch share mode
+            call_back_template::Callback4MR4R<
                 Datum<DeviceBuffer<vk::Buffer>>,
                 Datum<ModelD>,
                 Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
@@ -163,6 +169,7 @@ pub mod env {
                 usize, // usage
                 Datum<MeshD>,
                 VkAshAPID,
+                bool,
             >,
         ),
 
@@ -235,7 +242,6 @@ pub mod env {
         pub surface_pixle_format: vk::Format,
         pub swap_level: u32,
         pub cube_surface_width: u32, // 渲染表面深度
-        pub device_queue_count: u32, // gpu 设备最大队列支持
 
         pub index_surface_task: usize,
         //pub index_cmd_task: usize,
@@ -245,6 +251,11 @@ pub mod env {
         pub index_vbo_task: usize,
         pub index_cmd_buffer_task: usize,
         pub index_fences_task: usize,
+
+        pub index_gpu: usize,
+        pub index_swapimg_bind_queue: u32,
+
+        pub count_cmd: usize,
     }
 
     pub struct RendererE {
@@ -255,8 +266,8 @@ pub mod env {
         pub wnd_handle: HWND,
         pub mod_handle: HINSTANCE,
 
-        pub device_p: Option<usize>,
-        pub timer_p: Option<usize>,
+        gpu_p: Option<usize>,
+        timer_p: Option<usize>,
 
         // pub gpu_properties: Option<ash::vk::PhysicalDeviceProperties>,
         pub swapchain: Option<vk::SwapchainKHR>,
@@ -272,7 +283,7 @@ pub mod env {
             return Self {
                 id: 0,
                 frame_stride_ns: cfg::env::RENDERER::DEFAULT_RENDER_FRAME_STRIDE,
-                device_p: Option::None,
+                gpu_p: Option::None,
                 swapchain: Option::None,
                 surface_create_info: Option::None,
                 wnd_handle: null_mut(),
@@ -293,12 +304,33 @@ pub mod env {
         pub fn set_id(&mut self, id_in: u64) {
             self.id = id_in;
         }
+
         pub fn id_mut(&mut self) -> &mut u64 {
             return &mut self.id;
         }
 
+        pub fn index_gpu(&self) -> usize {
+            return self.renderer_attachment.index_gpu;
+        }
+
+        pub fn device_ref(&self) -> Result<&ash::Device, ()> {
+            return Ok(cast_ref!(DseGPU, self.gpu_p.unwrap())
+                .logical_p
+                .as_ref()
+                .unwrap());
+        }
+
+        pub fn gpu_ref(&self) -> Result<&DseGPU, ()> {
+            return Ok(&cast_ref!(DseGPU, self.gpu_p.unwrap()));
+        }
+
         pub fn build() -> Self {
             return Default::default();
+        }
+
+        pub fn build_bind_gpu(mut self, index: usize) -> Self {
+            self.renderer_attachment.index_gpu = index;
+            return self;
         }
 
         pub fn build_bind_timer_exe(mut self, timer_in: &TimerE) -> Self {
@@ -311,11 +343,6 @@ pub mod env {
             return self;
         }
 
-        pub fn build_gpu_properties(mut self, api_in: &mut VkAshAPID) -> Self {
-            // self.gpu_properties = Option::Some(api_in.gpu_properties_clone().unwrap_or_default());
-            return self;
-        }
-
         pub fn build_specify_handle(mut self, hwnd_in: HWND, mod_handle_in: HINSTANCE) -> Self {
             self.wnd_handle = hwnd_in;
             self.mod_handle = mod_handle_in;
@@ -323,23 +350,23 @@ pub mod env {
         }
 
         pub fn build_specify_api_base2create_surface(mut self, api_in: &mut VkAshAPID) -> Self {
-            self.device_p = Some(api_in.ash_device_ref().unwrap() as *const ash::Device as usize);
-            self.renderer_attachment.device_queue_count =
-                api_in.gpu_suitable_queue_count_currrent();
+            self.gpu_p = Some(api_in.gpu_ref(self.renderer_attachment.index_gpu).unwrap()
+                as *const DseGPU as usize);
 
             self._create_surface(api_in);
             return self;
         }
 
         pub fn build_device_suitable_surface(self, api_in: &mut VkAshAPID) -> Self {
-            for index in 0..api_in.queue_info_ref().as_ref().unwrap().iter().len() {
+            let _gpu = api_in.gpu_ref(self.renderer_attachment.index_gpu).unwrap();
+            for index in 0.._gpu.queue_families.as_ref().unwrap().len() {
                 unsafe {
                     match Win32Surface::new(
                         api_in.ash_entry_ref().unwrap(),
                         api_in.ash_instance_ref().unwrap(),
                     )
                     .get_physical_device_win32_presentation_support(
-                        *api_in.gpu_instance_ref().unwrap(),
+                        *_gpu.physical_p.as_ref().unwrap(),
                         index as u32,
                     ) {
                         true => crate::log::send2logger(
@@ -429,9 +456,14 @@ pub mod env {
 
         // ensure call it after build a device
         pub fn build_swap_buffer(mut self, api_in: &mut VkAshAPID) -> Self {
+            let _gpu = api_in.gpu_ref(self.renderer_attachment.index_gpu).unwrap();
+
             self.swapchain_loader = Some(Swapchain::new(
                 api_in.ash_instance_ref().unwrap(),
-                cast_ref!(ash::Device, self.device_p.unwrap()),
+                cast_ref!(DseGPU, self.gpu_p.unwrap())
+                    .logical_p
+                    .as_ref()
+                    .unwrap(),
             ));
             let surface_capabilities = unsafe {
                 api_in
@@ -439,7 +471,7 @@ pub mod env {
                     .as_ref()
                     .unwrap()
                     .get_physical_device_surface_capabilities(
-                        *api_in.gpu_instance_ref().unwrap(),
+                        *_gpu.physical_p.as_ref().unwrap(),
                         *self.renderer_surface.as_ref().unwrap(),
                     )
                     .unwrap_or_else(|_| -> SurfaceCapabilitiesKHR {
@@ -470,7 +502,7 @@ pub mod env {
                     .as_ref()
                     .unwrap()
                     .get_physical_device_surface_formats(
-                        *api_in.gpu_instance_ref().unwrap(),
+                        *_gpu.physical_p.as_ref().unwrap(),
                         *self.renderer_surface.as_ref().unwrap(),
                     )
                     .unwrap()
@@ -489,7 +521,7 @@ pub mod env {
                     .as_ref()
                     .unwrap()
                     .get_physical_device_surface_present_modes(
-                        *api_in.gpu_instance_ref().unwrap(),
+                        *_gpu.physical_p.as_ref().unwrap(),
                         *self.renderer_surface.as_ref().unwrap(),
                     )
                     .unwrap()
@@ -525,23 +557,25 @@ pub mod env {
                 },
                 image_usage: vk::ImageUsageFlags::COLOR_ATTACHMENT,
                 image_sharing_mode: match self.renderer_attachment.is_muti_queue_shared {
-                    true => match self.renderer_attachment.device_queue_count {
+                    true => match _gpu.queue_families.as_ref().unwrap().len() {
                         0 => vk::SharingMode::EXCLUSIVE,
                         1 => vk::SharingMode::EXCLUSIVE,
                         _ => vk::SharingMode::CONCURRENT,
                     },
                     false => vk::SharingMode::EXCLUSIVE,
                 },
-                queue_family_index_count: self.renderer_attachment.device_queue_count,
-                p_queue_family_indices: &self.renderer_attachment.device_queue_count,
+                queue_family_index_count: _gpu.queue_families.as_ref().unwrap().len() as u32,
+                p_queue_family_indices: match self.renderer_attachment.is_muti_queue_shared {
+                    false => &self.renderer_attachment.index_swapimg_bind_queue,
+                    true => null(),
+                },
                 pre_transform: vk::SurfaceTransformFlagsKHR::IDENTITY,
-                composite_alpha: vk::CompositeAlphaFlagsKHR::INHERIT,
+                composite_alpha: vk::CompositeAlphaFlagsKHR::OPAQUE,
                 present_mode: *surface_present_mode,
                 clipped: self.renderer_attachment.is_clip as u32,
                 old_swapchain: vk::SwapchainKHR::default(),
             });
 
-            //vk::KhrPortabilitySubsetFn::name()
             self.swapchain = unsafe {
                 Option::Some(
                     self.swapchain_loader
@@ -737,7 +771,12 @@ pub mod env {
                 .filter(|x| x.as_ref().unwrap().attachment.id_renderer == renderer_slice.id)
             {
                 let _fence = unsafe {
-                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                    renderer_slice
+                        .gpu_ref()
+                        .unwrap()
+                        .logical_p
+                        .as_ref()
+                        .unwrap()
                         .create_fence(&_info, Option::None)
                         .unwrap()
                 };
@@ -752,7 +791,12 @@ pub mod env {
 
         fn _callback_wait_fences(datum_sync: &Datum<CmdSyncD>, renderer_slice: &RendererE) {
             let _time_ref = cast_ref!(crate::time::env::TimerE, renderer_slice.timer_p.unwrap());
-            let _device_ref = cast_ref!(ash::Device, renderer_slice.device_p.unwrap());
+            let _device_ref = renderer_slice
+                .gpu_ref()
+                .unwrap()
+                .logical_p
+                .as_ref()
+                .unwrap();
 
             let _wait_time: u64;
             // judge if time out
@@ -794,6 +838,7 @@ pub mod env {
         pub fn tak_create_vbo(
             &mut self,
             usage_in: usize,
+            switch_share_mode: bool,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             get_mut!(tin.vec_mut(), self.renderer_attachment.index_vbo_task)
@@ -801,6 +846,7 @@ pub mod env {
                 .unwrap()
                 .push_task(RendererTask::CreateVBO(
                     usage_in,
+                    switch_share_mode,
                     Self::_callback_create_vbo,
                 ));
         }
@@ -857,12 +903,14 @@ pub mod env {
         */
         /// ## Parameter
         pub fn alloc_device_mem(
-            &mut self,
+            &self,
             mem_size: u64,
             mem_usage: vk::BufferUsageFlags,
-            current_mem_properties: vk::PhysicalDeviceMemoryProperties,
+            current_mem_properties: &vk::PhysicalDeviceMemoryProperties,
             device_buffer: &mut DeviceBuffer<vk::Buffer>,
+            switch_share_mode: bool,
         ) {
+            let _gpu = cast_ref!(DseGPU, self.gpu_p.unwrap());
             // request mem from device by vk instance
             let buffer_info = vk::BufferCreateInfo {
                 s_type: vk::StructureType::BUFFER_CREATE_INFO,
@@ -870,16 +918,22 @@ pub mod env {
                 flags: vk::BufferCreateFlags::default(),
                 size: mem_size,
                 usage: mem_usage,
-                sharing_mode: match self.renderer_attachment.is_muti_queue_shared {
+                sharing_mode: match switch_share_mode {
                     true => vk::SharingMode::CONCURRENT,
                     false => vk::SharingMode::EXCLUSIVE,
                 },
-                queue_family_index_count: self.renderer_attachment.device_queue_count,
-                p_queue_family_indices: null(),
+                queue_family_index_count: _gpu.queue_families.as_ref().unwrap().len() as u32,
+                p_queue_family_indices: match switch_share_mode {
+                    true => slice::to_num_slice(_gpu.queue_families.as_ref().unwrap().len()),
+                    false => null(),
+                },
             };
 
             let buffer: vk::Buffer = unsafe {
-                cast_ref!(ash::Device, self.device_p.unwrap())
+                cast_ref!(DseGPU, self.gpu_p.unwrap())
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .create_buffer(&buffer_info, Option::None)
                     .unwrap()
             };
@@ -898,7 +952,10 @@ pub mod env {
                 memory_type_index: memory_type_index as u32,
             };
             let mem = unsafe {
-                cast_ref!(ash::Device, self.device_p.unwrap())
+                cast_ref!(DseGPU, self.gpu_p.unwrap())
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .allocate_memory(&_alloc_info, Option::None)
                     .unwrap()
             };
@@ -908,7 +965,10 @@ pub mod env {
 
             // bind memory
             unsafe {
-                cast_ref!(ash::Device, self.device_p.unwrap())
+                cast_ref!(DseGPU, self.gpu_p.unwrap())
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .bind_buffer_memory(
                         *device_buffer.buffer_ref().unwrap(),
                         *device_buffer.device_mem_ref().unwrap(),
@@ -959,7 +1019,7 @@ pub mod env {
             _tasks.begin_execute();
             for ti in _tasks.task_iter_mut().unwrap() {
                 match task_interface::TaskTrait::task_mut(ti) {
-                    RendererTask::CreateVBO(uin, call) => {
+                    RendererTask::CreateVBO(uin, switch, call) => {
                         call(
                             datum_vkbuf,
                             datum_model,
@@ -968,6 +1028,7 @@ pub mod env {
                             uin,
                             datum_mesh,
                             api_bind,
+                            switch,
                         );
                     }
                     RendererTask::UpdateVBO(mesh_index, call) => {
@@ -1093,7 +1154,10 @@ pub mod env {
                     RendererTask::None => {}
                     RendererTask::CreateCmdBuffer(index, call, pool, priority_level) => call(
                         data,
-                        cast_ref!(ash::Device, self.device_p.unwrap()),
+                        cast_ref!(DseGPU, self.gpu_p.unwrap())
+                            .logical_p
+                            .as_ref()
+                            .unwrap(),
                         pool,
                         &priority_level,
                     ),
@@ -1131,43 +1195,107 @@ pub mod env {
             &self,
             default_type: vk::MemoryPropertyFlags,
             buf_in: &vk::Buffer,
-            proper_in: &vk::PhysicalDeviceMemoryProperties,
+            property_in: &vk::PhysicalDeviceMemoryProperties,
         ) -> usize {
-            let mut _req_type = default_type;
-
             // get mem requirement info from device by vk instance
             let mem_req: vk::MemoryRequirements = unsafe {
-                cast_ref!(ash::Device, self.device_p.unwrap())
+                cast_ref!(DseGPU, self.gpu_p.unwrap())
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .get_buffer_memory_requirements(*buf_in)
             };
-            let default_type =
+            let _req_type =
                 vk::MemoryPropertyFlags::from_raw(default_type.as_raw() | mem_req.memory_type_bits);
 
-            let mut _r = 0;
+            // dev_dbg!(&default_type);
+            // dev_dbg!(_req_type);
+            // dev_dbg!(vk::MemoryPropertyFlags::from_raw(mem_req.memory_type_bits));
+
+            let mut _r = usize::MAX;
             let mut _r_type_flag = 0;
 
+            // dev_dbg!(self.renderer_attachment.is_performance_first);
             // dev_dbg!(proper_in);
-            for tei in proper_in.memory_types.iter().enumerate() {
-                if tei.1.property_flags.contains(default_type) {
+            for tei in property_in.memory_types.iter().enumerate() {
+                if tei.1.property_flags.contains(_req_type) {
                     if self.renderer_attachment.is_performance_first {
                         return tei.0;
                     } else if _r_type_flag < tei.1.property_flags.as_raw() {
+                        _r_type_flag = tei.1.property_flags.as_raw();
                         _r = tei.0;
                     }
                 }
             }
-            if _r == 0 {
-                return 0;
-            } else {
-                return _r;
+            if _r == usize::MAX {
+                for tei in property_in.memory_types.iter().enumerate() {
+                    if tei
+                        .1
+                        .property_flags
+                        .contains(vk::MemoryPropertyFlags::from_raw(mem_req.memory_type_bits))
+                    {
+                        if self.renderer_attachment.is_performance_first {
+                            return tei.0;
+                        } else if _r_type_flag < tei.1.property_flags.as_raw() {
+                            _r_type_flag = tei.1.property_flags.as_raw();
+                            _r = tei.0;
+                        }
+                    }
+                }
             }
+            if _r == usize::MAX {
+                for tei in property_in.memory_types.iter().enumerate() {
+                    if tei.1.property_flags.contains(default_type) {
+                        if self.renderer_attachment.is_performance_first {
+                            return tei.0;
+                        } else if _r_type_flag < tei.1.property_flags.as_raw()
+                            && vk::MemoryPropertyFlags::from_raw(mem_req.memory_type_bits)
+                                .contains(tei.1.property_flags)
+                        {
+                            _r_type_flag = tei.1.property_flags.as_raw();
+                            _r = tei.0;
+                        }
+                    }
+                }
+            }
+            if _r == usize::MAX {
+                for tei in property_in.memory_types.iter().enumerate() {
+                    if tei.1.property_flags.contains(default_type) {
+                        if self.renderer_attachment.is_performance_first {
+                            return tei.0;
+                        } else if _r_type_flag < tei.1.property_flags.as_raw()
+                            // && vk::MemoryPropertyFlags::from_raw(mem_req.memory_type_bits)
+                            //     .contains(tei.1.property_flags)
+                        {
+                            _r_type_flag = tei.1.property_flags.as_raw();
+                            _r = tei.0;
+                        }
+                    }
+                }
+            }
+            if _r == usize::MAX {
+                crate::send2logger_dev!(
+                    crate::log::code::TYPE_EXE_WARN
+                        | crate::log::code::CONDI_CUSTOM_PARAM_NOT_FOUND
+                        | crate::log::code::FILE_RENDERER
+                        | crate::log::LogCodeD::new()
+                            .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                            .get_code()
+                        | crate::log::LogCodeD::new()
+                            .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
+                            .get_code()
+                );
+                return 0;
+            }
+            // dev_dbg!(vk::MemoryPropertyFlags::from_raw(_r_type_flag));
+            return _r;
         }
 
         fn _alloc_device_mem_surfimg(
-            &mut self,
+            &self,
             mem_size: u64,
             mem_usage: vk::BufferUsageFlags,
-            current_mem_properties: vk::PhysicalDeviceMemoryProperties,
+            current_mem_properties: &vk::PhysicalDeviceMemoryProperties,
             surf_buffer: &mut DeviceBuffer<SurfaceIMGBuffer>,
         ) {
             // request mem from device by vk instance
@@ -1181,12 +1309,21 @@ pub mod env {
                     true => vk::SharingMode::CONCURRENT,
                     false => vk::SharingMode::EXCLUSIVE,
                 },
-                queue_family_index_count: self.renderer_attachment.device_queue_count,
+                queue_family_index_count: self
+                    .gpu_ref()
+                    .unwrap()
+                    .queue_families
+                    .as_ref()
+                    .unwrap()
+                    .len() as u32,
                 p_queue_family_indices: null(),
             };
 
             let _vkbuffer: vk::Buffer = unsafe {
-                cast_ref!(ash::Device, self.device_p.unwrap())
+                cast_ref!(DseGPU, self.gpu_p.unwrap())
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .create_buffer(&buffer_info, Option::None)
                     .unwrap()
             };
@@ -1195,7 +1332,7 @@ pub mod env {
             let memory_type_index = self._find_suitable_mem_type(
                 DeviceBufferUsage::get_vk_mem_mapping_type(surf_buffer.usage_ref().unwrap()),
                 &_vkbuffer,
-                &current_mem_properties,
+                current_mem_properties,
             );
 
             let _alloc_info: vk::MemoryAllocateInfo = vk::MemoryAllocateInfo {
@@ -1205,7 +1342,10 @@ pub mod env {
                 memory_type_index: memory_type_index as u32,
             };
             let mem = unsafe {
-                cast_ref!(ash::Device, self.device_p.unwrap())
+                cast_ref!(DseGPU, self.gpu_p.unwrap())
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .allocate_memory(&_alloc_info, Option::None)
                     .expect("Failed to allocate memory")
             };
@@ -1214,7 +1354,10 @@ pub mod env {
             surf_buffer.buffer_mut().unwrap().set_vkbuffer(_vkbuffer);
 
             unsafe {
-                cast_ref!(ash::Device, self.device_p.unwrap())
+                cast_ref!(DseGPU, self.gpu_p.unwrap())
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .bind_image_memory(
                         *surf_buffer.buffer_mut().unwrap().img_mut(),
                         *surf_buffer.device_mem_ref().unwrap(),
@@ -1324,7 +1467,12 @@ pub mod env {
 
                     unsafe {
                         _buf.set_buffer(
-                            cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                            renderer_slice
+                                .gpu_ref()
+                                .unwrap()
+                                .logical_p
+                                .as_ref()
+                                .unwrap()
                                 .create_framebuffer(&_info, Option::None)
                                 .unwrap(),
                         )
@@ -1358,7 +1506,12 @@ pub mod env {
             }
 
             let _pipelines = unsafe {
-                cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                renderer_slice
+                    .gpu_ref()
+                    .unwrap()
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .create_graphics_pipelines(
                         Default::default(),
                         _pipeline_info_slice.as_slice(),
@@ -1389,13 +1542,23 @@ pub mod env {
         {
             for pi in datum.iter_mut() {
                 let _layout = unsafe {
-                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                    renderer_slice
+                        .gpu_ref()
+                        .unwrap()
+                        .logical_p
+                        .as_ref()
+                        .unwrap()
                         .create_pipeline_layout(
                             pi.as_mut().unwrap().layout_create_info_ref(),
                             Option::None,
                         )
                         .unwrap_or(
-                            cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                            renderer_slice
+                                .gpu_ref()
+                                .unwrap()
+                                .logical_p
+                                .as_ref()
+                                .unwrap()
                                 .create_pipeline_layout(
                                     &cfg::env::PSO::DEFAULT_LAYOUT,
                                     Option::None,
@@ -1415,7 +1578,12 @@ pub mod env {
                 match si {
                     Some(val) => unsafe {
                         val.entity = Some(
-                            cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                            renderer_slice
+                                .gpu_ref()
+                                .unwrap()
+                                .logical_p
+                                .as_ref()
+                                .unwrap()
                                 .create_shader_module(&val.info, Option::None)
                                 .unwrap(),
                         )
@@ -1431,7 +1599,12 @@ pub mod env {
         ) {
             for pi in datum.iter_mut() {
                 let _pass = unsafe {
-                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                    renderer_slice
+                        .gpu_ref()
+                        .unwrap()
+                        .logical_p
+                        .as_ref()
+                        .unwrap()
                         .create_render_pass(
                             pi.as_ref()
                                 .unwrap()
@@ -1441,7 +1614,12 @@ pub mod env {
                             Option::None,
                         )
                         .unwrap_or(
-                            cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                            renderer_slice
+                                .gpu_ref()
+                                .unwrap()
+                                .logical_p
+                                .as_ref()
+                                .unwrap()
                                 .create_render_pass(
                                     &&crate::renderer::cfg::env::PSO::DEFAULT_RENDER_PASS,
                                     Option::None,
@@ -1492,7 +1670,12 @@ pub mod env {
                 .p_queue_family_indices;
             //  create IMG
             let img = unsafe {
-                cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                renderer_slice
+                    .gpu_ref()
+                    .unwrap()
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .create_image(vk_img_format, Option::None)
                     .unwrap()
             };
@@ -1501,7 +1684,12 @@ pub mod env {
             vk_render_img2surface_config.format = vk_img_format.format;
 
             let alloc_size = unsafe {
-                cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                renderer_slice
+                    .gpu_ref()
+                    .unwrap()
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .get_image_memory_requirements(img)
                     .size
             };
@@ -1511,16 +1699,28 @@ pub mod env {
                 DeviceBuffer::<SurfaceIMGBuffer>::default()
                     .build_buffer(_surfbuf)
                     .build_usage(*usage);
+            let _pro = renderer_slice
+                .gpu_ref()
+                .as_ref()
+                .unwrap()
+                .mem_info
+                .as_ref()
+                .unwrap();
 
             renderer_slice._alloc_device_mem_surfimg(
                 alloc_size,
                 DeviceBufferUsage::get_vk_usage(*usage),
-                *api_bind.gpu_mem_properties_current_ref().unwrap(),
+                _pro,
                 &mut _buf,
             );
 
             _buf.buffer_mut().unwrap().set_view(unsafe {
-                cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                renderer_slice
+                    .gpu_ref()
+                    .unwrap()
+                    .logical_p
+                    .as_ref()
+                    .unwrap()
                     .create_image_view(&vk_render_img2surface_config, Option::None)
                     .unwrap()
             });
@@ -1577,13 +1777,23 @@ pub mod env {
                 // todo!(); // leak device buffer alloc
 
                 let view = unsafe {
-                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                    renderer_slice
+                        .gpu_ref()
+                        .unwrap()
+                        .logical_p
+                        .as_ref()
+                        .unwrap()
                         .create_image_view(&info, Option::None)
                         .unwrap()
                 };
 
                 let alloc_size = unsafe {
-                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                    renderer_slice
+                        .gpu_ref()
+                        .unwrap()
+                        .logical_p
+                        .as_ref()
+                        .unwrap()
                         .get_image_memory_requirements(imgi)
                         .size
                 };
@@ -1602,7 +1812,12 @@ pub mod env {
                 // );
 
                 unsafe {
-                    cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                    renderer_slice
+                        .gpu_ref()
+                        .unwrap()
+                        .logical_p
+                        .as_ref()
+                        .unwrap()
                         .bind_image_memory(imgi, *_buf.device_mem_ref().unwrap(), 0)
                         .expect("bind custom image_memory fail")
                 };
@@ -1687,6 +1902,7 @@ pub mod env {
             usage_in: &usize,
             mesh_datum: &Datum<MeshD>,
             api_bind: &VkAshAPID,
+            switch_share_mode: &bool,
         ) {
             for mmi in datum_model.vec_mut().iter_mut() {
                 let mut _vbo: DeviceBuffer<vk::Buffer> =
@@ -1702,8 +1918,15 @@ pub mod env {
                 renderer_slice.alloc_device_mem(
                     _mesh.buffer_mem_size(),
                     vk::BufferUsageFlags::VERTEX_BUFFER,
-                    *api_bind.gpu_mem_properties_current_ref().unwrap(),
+                    renderer_slice
+                        .gpu_ref()
+                        .as_ref()
+                        .unwrap()
+                        .mem_info
+                        .as_ref()
+                        .unwrap(),
                     &mut _vbo,
+                    *switch_share_mode,
                 );
 
                 let mut _mem_p: *mut c_void = null_mut();
@@ -1714,7 +1937,12 @@ pub mod env {
                         DeviceBufferUsage::MEM_TYPE_RAM_PROTECED => {}
                         DeviceBufferUsage::MEM_TYPE_RAM_UNVISIBLE => {}
                         DeviceBufferUsage::MEM_TYPE_RAM_CACHED => {
-                            _mem_p = cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                            _mem_p = renderer_slice
+                                .gpu_ref()
+                                .unwrap()
+                                .logical_p
+                                .as_ref()
+                                .unwrap()
                                 .map_memory(
                                     *_vbo.device_mem_ref().unwrap(),
                                     0,
@@ -1724,7 +1952,12 @@ pub mod env {
                                 .unwrap();
                         }
                         DeviceBufferUsage::MEM_TYPE_RAM_VISIBLE => {
-                            _mem_p = cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                            _mem_p = renderer_slice
+                                .gpu_ref()
+                                .unwrap()
+                                .logical_p
+                                .as_ref()
+                                .unwrap()
                                 .map_memory(
                                     *_vbo.device_mem_ref().unwrap(),
                                     0,
@@ -1734,7 +1967,12 @@ pub mod env {
                                 .unwrap();
                         }
                         DeviceBufferUsage::MEM_TYPE_RAM_COHERENT => {
-                            _mem_p = cast_ref!(ash::Device, renderer_slice.device_p.unwrap())
+                            _mem_p = renderer_slice
+                                .gpu_ref()
+                                .unwrap()
+                                .logical_p
+                                .as_ref()
+                                .unwrap()
                                 .map_memory(
                                     *_vbo.device_mem_ref().unwrap(),
                                     0,
@@ -1808,7 +2046,6 @@ pub mod env {
                     crate::renderer::cfg::env::RENDERER::DEFAULT_IS_PERFORMANCE_FIRST,
 
                 cube_surface_width: 1,
-                device_queue_count: 0,
 
                 index_surface_task: usize::MAX,
                 // index_cmd_task: 1,
@@ -1818,6 +2055,9 @@ pub mod env {
                 index_vbo_task: usize::MAX,
                 index_cmd_buffer_task: usize::MAX,
                 index_fences_task: usize::MAX,
+                index_gpu: 0,
+                index_swapimg_bind_queue: 0,
+                count_cmd: 0,
             };
         }
     }

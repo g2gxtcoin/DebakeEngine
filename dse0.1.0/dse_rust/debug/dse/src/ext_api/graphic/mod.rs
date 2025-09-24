@@ -43,13 +43,17 @@ pub mod convert {
 pub mod env {
     use std::{
         default,
+        fmt::Debug,
         ops::Deref,
         ptr::{null, null_mut},
     };
 
     use ash::vk::{self};
+    use toml::de;
 
-    use crate::dev_dbg_iter;
+    use crate::{
+        ________________dev_stop________________, dev_dbg_iter, get, hardware::gpu::env::DseGPU,
+    };
 
     use super::{DEFAULT_VK_API_VERSION_MAJOR, DEFAULT_VK_API_VERSION_MINOR};
 
@@ -93,12 +97,12 @@ pub mod env {
         gpu_id: u64,
         gpu_queue_priority: f32,
     }
+
     pub struct VkAshAPID {
         id: u64,
         base_feature: String,
         lock: bool,
         config: GraphicAPIConfigD,
-        priority: [f32; 1],
 
         ash_entry: Option<ash::Entry>,
         ash_instance: Option<ash::Instance>, //ash pack warp instance include entry& vk instance
@@ -115,14 +119,13 @@ pub mod env {
         vk_instance_layer_names: Option<Vec<*const i8>>,
         vk_debug_create_info: Option<vk::DebugUtilsMessengerCreateInfoEXT>,
         vk_debug_msger: Option<vk::DebugUtilsMessengerEXT>,
-        vk_gpu_device: Option<vk::PhysicalDevice>,
-        vk_gpu_properties: Option<vk::PhysicalDeviceProperties>,
-        vk_gpu_feature: Option<vk::PhysicalDeviceFeatures>,
-        vk_gpu_mem_properties: Option<vk::PhysicalDeviceMemoryProperties>,
-        vk_gpu_queue_families: Option<Vec<vk::QueueFamilyProperties>>,
+        vk_physical_device_vec: Option<Vec<DseGPU>>,
+        // vk_gpu_device_vec: Option<Vec<vk::PhysicalDevice>>,
+        // vk_gpu_properties: Option<vk::PhysicalDeviceProperties>,
+        // vk_gpu_feature: Option<vk::PhysicalDeviceFeatures>,
+        // vk_gpu_mem_properties: Option<vk::PhysicalDeviceMemoryProperties>,
+        // vk_gpu_queue_families: Option<Vec<vk::QueueFamilyProperties>>,
         //vk_gpu_queue_suitable_families: Option<Vec<vk::QueueFamilyProperties>>,
-        vk_logical_device_quque_create_info: Option<Vec<vk::DeviceQueueCreateInfo>>,
-        vk_logical_device_info: Option<vk::DeviceCreateInfo>,
         vk_logical_device_ext_names: Option<Vec<*const i8>>,
     }
 
@@ -138,30 +141,6 @@ pub mod env {
     impl GraphicAPIConfigD {}
 
     impl VkAshAPID {
-        /// 构建GPU特性
-        /// 确保在创建ash_instance与vk_gpu_device后调用
-        pub unsafe fn build_gpu_feature(mut self) -> Self {
-            self.vk_gpu_feature = Some(
-                self.ash_instance
-                    .as_mut()
-                    .unwrap()
-                    .get_physical_device_features(*self.vk_gpu_device.as_ref().unwrap()),
-            );
-            return self;
-        }
-
-        // 构建GPU内存属性
-        // 确保在创建ash_instance与vk_gpu_device后调用
-        pub unsafe fn build_mem_properties(mut self) -> Self {
-            self.vk_gpu_mem_properties = Option::Some(
-                self.ash_instance
-                    .as_mut()
-                    .unwrap()
-                    .get_physical_device_memory_properties(*self.vk_gpu_device.as_ref().unwrap()),
-            );
-            return self;
-        }
-
         pub unsafe fn build_specify_config(mut self, config_in: GraphicAPIConfigD) -> Self {
             self.config = config_in;
             return self;
@@ -271,54 +250,18 @@ pub mod env {
             return self;
         }
 
-        pub unsafe fn build_gpu_properties(mut self) -> Self {
-            self.vk_gpu_properties = Some(
-                self.ash_instance
-                    .as_ref()
-                    .unwrap()
-                    .get_physical_device_properties(*self.gpu_instance_ref().unwrap()),
-            );
-            return self;
-        }
-
-        // detect local physical device & select custom specifying one
-        // detect what will rely on what ext and layer name and config you decide and link on
-        // ensure link config by assertE before or you will get a default config gpu setting but panic!
-        pub unsafe fn build_gpu_device_custom(mut self) -> Self {
-            let vk_gpu_device_list = self
-                .ash_instance
-                .as_ref()
-                .unwrap()
-                .enumerate_physical_devices()
-                .expect("error:there is no physical device found");
-
-            if self.config.gpu_id < vk_gpu_device_list.len() as u64 {
-                self.vk_gpu_device = Option::Some(vk_gpu_device_list[self.config.gpu_id as usize]);
-            } else {
-                crate::send2logger_dev!(
-                    crate::log::code::TYPE_EXT_ERROR
-                        | crate::log::code::CONDI_VK_DEVICE_NOT_FOUND
-                        | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
-                        | crate::log::LogCodeD::new()
-                            .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                            .get_code()
-                        | crate::log::LogCodeD::new()
-                            .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                            .get_code()
-                );
-            }
-            return self;
-        }
-
         // detect local physical device by os drive define
-        pub unsafe fn build_gpu_device_auto(mut self) -> Self {
+        pub unsafe fn build_gpu_device(mut self) -> Self {
             let vk_gpu_device_list = self
                 .ash_instance
                 .as_ref()
                 .unwrap()
                 .enumerate_physical_devices()
-                .expect("error:there is no physical device found");
+                .unwrap();
+
+            // Init & physical_p
             if self.ash_os_drive_loader.is_some() {
+                self.vk_physical_device_vec = Option::Some(Vec::with_capacity(2));
                 for gpu_i in vk_gpu_device_list.iter() {
                     for eqi in self
                         .ash_instance
@@ -334,7 +277,9 @@ pub mod env {
                             .unwrap()
                             .get_physical_device_win32_presentation_support(*gpu_i, eqi.0 as u32)
                         {
-                            self.vk_gpu_device = Option::Some(*gpu_i);
+                            let mut _gpu = DseGPU::default();
+                            _gpu.physical_p = Option::Some(*gpu_i);
+                            self.vk_physical_device_vec.as_mut().unwrap().push(_gpu);
                         }
                     }
                 }
@@ -352,64 +297,87 @@ pub mod env {
                 );
             }
 
-            return self;
-        }
+            // physical_info
+            for hi in self.vk_physical_device_vec.as_mut().unwrap().iter_mut() {
+                hi.physical_info = Some(
+                    self.ash_instance
+                        .as_ref()
+                        .unwrap()
+                        .get_physical_device_properties(*hi.physical_p.as_ref().unwrap()),
+                );
+            }
 
-        // ensure build current gpu before
-        pub unsafe fn build_get_queue_family_from_gpu(mut self) -> Self {
-            if self.vk_gpu_device.is_some() {
-                self.vk_gpu_queue_families = Option::Some(
+            // physical_features
+            for hi in self.vk_physical_device_vec.as_mut().unwrap().iter_mut() {
+                hi.physical_features = Some(
+                    self.ash_instance
+                        .as_mut()
+                        .unwrap()
+                        .get_physical_device_features(*(hi.physical_p.as_ref().unwrap())),
+                );
+            }
+
+            // mem_info
+            for hi in self.vk_physical_device_vec.as_mut().unwrap().iter_mut() {
+                hi.mem_info = Option::Some(
+                    self.ash_instance
+                        .as_mut()
+                        .unwrap()
+                        .get_physical_device_memory_properties(*(hi.physical_p.as_ref().unwrap())),
+                );
+            }
+
+            //queue_families
+            for hi in self.vk_physical_device_vec.as_mut().unwrap().iter_mut() {
+                hi.queue_families = Option::Some(
                     self.ash_instance
                         .as_ref()
                         .unwrap()
                         .get_physical_device_queue_family_properties(
-                            self.vk_gpu_device.clone().unwrap(),
+                            *(hi.physical_p.as_ref().unwrap()),
                         ),
                 );
-                // dev_dbg_iter!(self.vk_gpu_queue_families.as_ref().unwrap());
-            } else {
-                crate::send2logger_dev!(
-                    crate::log::code::TYPE_EXT_ERROR
-                        | crate::log::code::CONDI_VK_BUILDER_PREBUILD_NOT_BUILD
-                        | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
-                        | crate::log::LogCodeD::new()
-                            .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                            .get_code()
-                        | crate::log::LogCodeD::new()
-                            .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                            .get_code()
-                )
+                // dev_dbg_iter!(hi.queue_families.as_ref().unwrap());
             }
-            return self;
-        }
 
-        pub unsafe fn build_set_queue_priority(mut self, fin: f32) -> Self {
-            self.priority[0] = fin;
+            // logical_p
+            for hi in self.vk_physical_device_vec.as_mut().unwrap().iter_mut() {
+                hi.create_logical_info(self.vk_logical_device_ext_names.as_ref().unwrap());
+
+                hi.logical_info.as_mut().unwrap().enabled_extension_count =
+                    self.vk_logical_device_ext_names.as_ref().unwrap().len() as u32;
+                hi.logical_info.as_mut().unwrap().pp_enabled_extension_names =
+                    self.vk_logical_device_ext_names.as_mut().unwrap().as_ptr();
+
+                let _device = self
+                    .ash_instance
+                    .as_ref()
+                    .unwrap()
+                    .create_device(
+                        hi.physical_p.clone().unwrap(),
+                        hi.logical_info.as_ref().unwrap(),
+                        Option::None,
+                    )
+                    .unwrap();
+                hi.logical_p = Option::Some(_device);
+            }
+
             return self;
         }
 
         // Uncompleted Experimental function !!!!
         // ensure you know what you addon ext name to use it
         pub unsafe fn build_add_p_device_ext_name_checked(mut self, pin: *const i8) -> Self {
-            let _features = self
-                .ash_instance
-                .as_ref()
-                .unwrap()
-                .get_physical_device_features(self.vk_gpu_device.clone().unwrap());
+            // let _features = self
+            //     .ash_instance
+            //     .as_ref()
+            //     .unwrap()
+            //     .get_physical_device_features(self.vk_gpu_device.clone().unwrap());
+
             // here you see
-            // fk this is true!!!!! always no check!!!!
+            //fk this is true!!!!! always no check!!!!
             if true {
                 self.vk_logical_device_ext_names.as_mut().unwrap().push(pin);
-                self.vk_logical_device_info
-                    .as_mut()
-                    .unwrap()
-                    .enabled_extension_count =
-                    self.vk_logical_device_ext_names.as_ref().unwrap().len() as u32;
-                self.vk_logical_device_info
-                    .as_mut()
-                    .unwrap()
-                    .pp_enabled_extension_names =
-                    self.vk_logical_device_ext_names.as_mut().unwrap().as_ptr();
             } else {
                 crate::send2logger_dev!(
                     crate::log::code::TYPE_EXT_ERROR
@@ -424,75 +392,6 @@ pub mod env {
                 )
             }
 
-            return self;
-        }
-        //
-        pub unsafe fn build_vk_device_checked(mut self) -> Self {
-            if self.vk_gpu_queue_families.is_some() {
-                let mut queue_result: Vec<vk::DeviceQueueCreateInfo> =
-                    Vec::<vk::DeviceQueueCreateInfo>::new();
-                for eqi in self
-                    .vk_gpu_queue_families
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .enumerate()
-                {
-                    // ensure this pcie is pipe toward gpu
-                    if eqi.1.queue_flags.contains(vk::QueueFlags::GRAPHICS) {
-                        queue_result.push(vk::DeviceQueueCreateInfo {
-                            s_type: vk::StructureType::DEVICE_QUEUE_CREATE_INFO,
-                            p_next: null(),
-                            flags: vk::DeviceQueueCreateFlags::default(),
-                            queue_family_index: eqi.0 as u32,
-                            queue_count: self.vk_gpu_queue_families.as_ref().unwrap().len() as u32,
-                            p_queue_priorities: self.priority.as_ptr(),
-                        })
-                    }
-                }
-
-                self.vk_logical_device_quque_create_info = Option::Some(queue_result);
-                self.vk_logical_device_info
-                    .as_mut()
-                    .unwrap()
-                    .queue_create_info_count = self
-                    .vk_logical_device_quque_create_info
-                    .as_ref()
-                    .unwrap()
-                    .len() as u32;
-                self.vk_logical_device_info
-                    .as_mut()
-                    .unwrap()
-                    .p_queue_create_infos = self
-                    .vk_logical_device_quque_create_info
-                    .as_ref()
-                    .unwrap()
-                    .as_ptr();
-
-                self.ash_device = Option::Some(
-                    self.ash_instance
-                        .as_ref()
-                        .unwrap()
-                        .create_device(
-                            self.vk_gpu_device.clone().unwrap(),
-                            self.vk_logical_device_info.as_ref().unwrap(),
-                            Option::None,
-                        )
-                        .expect("device create failed"),
-                );
-            } else {
-                crate::send2logger_dev!(
-                    crate::log::code::TYPE_EXT_ERROR
-                        | crate::log::code::CONDI_VK_BUILDER_PREBUILD_NOT_BUILD
-                        | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
-                        | crate::log::LogCodeD::new()
-                            .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                            .get_code()
-                        | crate::log::LogCodeD::new()
-                            .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                            .get_code()
-                )
-            }
             return self;
         }
 
@@ -547,19 +446,6 @@ pub mod env {
 
             let vk_logical_device_ext_names = Vec::<*const i8>::new();
 
-            let vk_logical_device_info = vk::DeviceCreateInfo {
-                s_type: vk::StructureType::DEVICE_CREATE_INFO,
-                p_next: null(),
-                flags: vk::DeviceCreateFlags::default(),
-                queue_create_info_count: 0,
-                p_queue_create_infos: null(),
-                enabled_layer_count: 0,
-                pp_enabled_layer_names: null(),
-                enabled_extension_count: 0,
-                pp_enabled_extension_names: null(),
-                p_enabled_features: null(),
-            };
-
             Self {
                 base_feature: String::from("AshVkBase"),
                 config: GraphicAPIConfigD::default(),
@@ -574,15 +460,8 @@ pub mod env {
                 vk_instance_layer_names: Option::Some(vk_layer_names),
                 vk_debug_create_info: Option::Some(vk_debug_info),
                 vk_debug_msger: Option::None,
-                vk_gpu_device: Option::None,
-                vk_gpu_mem_properties: Option::None,
-                vk_gpu_properties: Option::None,
-                vk_gpu_feature: Option::None,
-                vk_logical_device_info: Option::Some(vk_logical_device_info),
-                vk_logical_device_quque_create_info: Option::None,
-                vk_gpu_queue_families: Option::None,
+                vk_physical_device_vec: Option::None,
                 ash_os_drive_loader: Option::None,
-                priority: [1.0f32],
                 vk_logical_device_ext_names: Option::Some(vk_logical_device_ext_names),
                 id: 0,
                 lock: false,
@@ -595,23 +474,8 @@ pub mod env {
             return self;
         }
 
-        pub fn gpu_properties_clone(&self) -> Result<vk::PhysicalDeviceProperties, ()> {
-            match self.vk_gpu_properties {
-                Some(val) => Ok(val.clone()),
-                None => {
-                    return Err(crate::send2logger_dev!(
-                        crate::log::code::TYPE_EXE_ERROR
-                            | crate::log::code::CONDI_OPTION_NONE
-                            | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
-                            | crate::log::LogCodeD::new()
-                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                                .get_code()
-                            | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                                .get_code()
-                    ));
-                }
-            }
+        pub fn gpu_ref(&self, index: usize) -> Result<&DseGPU, ()> {
+            return Ok(get!(self.vk_physical_device_vec.as_ref().unwrap(), index));
         }
 
         // get entry ref will not consunm itself
@@ -627,7 +491,10 @@ pub mod env {
                                 .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
                                 .get_code()
                             | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
+                                .encode(
+                                    self.id as u128,
+                                    crate::log::LogPartFlag::LOGGER_PART_EXE_ID,
+                                )
                                 .get_code(),
                     ));
                 }
@@ -647,7 +514,10 @@ pub mod env {
                                 .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
                                 .get_code()
                             | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
+                                .encode(
+                                    self.id as u128,
+                                    crate::log::LogPartFlag::LOGGER_PART_EXE_ID,
+                                )
                                 .get_code(),
                     ));
                 }
@@ -666,7 +536,10 @@ pub mod env {
                                 .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
                                 .get_code()
                             | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
+                                .encode(
+                                    self.id as u128,
+                                    crate::log::LogPartFlag::LOGGER_PART_EXE_ID,
+                                )
                                 .get_code(),
                     ));
                 }
@@ -687,58 +560,14 @@ pub mod env {
                                 .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
                                 .get_code()
                             | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
+                                .encode(
+                                    self.id as u128,
+                                    crate::log::LogPartFlag::LOGGER_PART_EXE_ID,
+                                )
                                 .get_code(),
                     ));
                 }
             }
-        }
-
-        pub fn gpu_instance_ref(&self) -> Result<&vk::PhysicalDevice, ()> {
-            match self.vk_gpu_device {
-                Some(ref i) => return std::result::Result::Ok(i),
-                None => {
-                    return Err(crate::log::sorry(
-                        crate::log::code::TYPE_EXT_ERROR
-                            | crate::log::code::CONDI_VK_INSTANCE_NOT_FOUND
-                            | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
-                            | crate::log::LogCodeD::new()
-                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                                .get_code()
-                            | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                                .get_code(),
-                    ));
-                }
-            }
-        }
-
-        pub fn queue_info_ref(&self) -> Result<&Vec<vk::QueueFamilyProperties>, ()> {
-            match self.vk_gpu_queue_families {
-                Some(ref i) => return std::result::Result::Ok(i),
-                None => {
-                    return Err(crate::log::sorry(
-                        crate::log::code::TYPE_EXT_ERROR
-                            | crate::log::code::CONDI_VK_INSTANCE_NOT_FOUND
-                            | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
-                            | crate::log::LogCodeD::new()
-                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                                .get_code()
-                            | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                                .get_code(),
-                    ));
-                }
-            }
-        }
-
-        pub fn gpu_suitable_queue_count_currrent(&self) -> u32 {
-            return self
-                .vk_logical_device_info
-                .as_ref()
-                .unwrap()
-                .queue_create_info_count;
-            return 0;
         }
 
         pub fn surface_loader_ref(&self) -> Result<&ash::extensions::khr::Surface, ()> {
@@ -753,85 +582,10 @@ pub mod env {
                                 .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
                                 .get_code()
                             | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                                .get_code(),
-                    ));
-                }
-            }
-        }
-
-        pub fn gpu_feature_ref(&self) -> Result<&vk::PhysicalDeviceFeatures, ()> {
-            match self.vk_gpu_feature.as_ref() {
-                Some(s) => return std::result::Result::Ok(s),
-                None => {
-                    return Err(crate::log::sorry(
-                        crate::log::code::TYPE_EXT_ERROR
-                            | crate::log::code::CONDI_OPTION_NONE
-                            | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
-                            | crate::log::LogCodeD::new()
-                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                                .get_code()
-                            | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                                .get_code(),
-                    ));
-                }
-            }
-        }
-
-        pub fn gpu_properties_ref(&self) -> Result<&vk::PhysicalDeviceProperties, ()> {
-            match self.vk_gpu_properties.as_ref() {
-                Some(s) => return std::result::Result::Ok(s),
-                None => {
-                    return Err(crate::log::sorry(
-                        crate::log::code::TYPE_EXT_ERROR
-                            | crate::log::code::CONDI_OPTION_NONE
-                            | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
-                            | crate::log::LogCodeD::new()
-                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                                .get_code()
-                            | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                                .get_code(),
-                    ));
-                }
-            }
-        }
-
-        pub fn vk_gpu_device_ref(&self) -> Result<&vk::PhysicalDevice, ()> {
-            match self.vk_gpu_device.as_ref() {
-                Some(s) => return std::result::Result::Ok(s),
-                None => {
-                    return Err(crate::log::sorry(
-                        crate::log::code::TYPE_EXT_ERROR
-                            | crate::log::code::CONDI_OPTION_NONE
-                            | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
-                            | crate::log::LogCodeD::new()
-                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                                .get_code()
-                            | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
-                                .get_code(),
-                    ));
-                }
-            }
-        }
-
-        pub fn gpu_mem_properties_current_ref(
-            &self,
-        ) -> Result<&vk::PhysicalDeviceMemoryProperties, ()> {
-            match self.vk_gpu_mem_properties.as_ref() {
-                Some(s) => return std::result::Result::Ok(s),
-                None => {
-                    return Err(crate::log::sorry(
-                        crate::log::code::TYPE_EXT_ERROR
-                            | crate::log::code::CONDI_OPTION_NONE
-                            | crate::log::code::FILE_EXTAPI_GRAPHIC_VK
-                            | crate::log::LogCodeD::new()
-                                .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
-                                .get_code()
-                            | crate::log::LogCodeD::new()
-                                .encode(self.id as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
+                                .encode(
+                                    self.id as u128,
+                                    crate::log::LogPartFlag::LOGGER_PART_EXE_ID,
+                                )
                                 .get_code(),
                     ));
                 }
@@ -951,8 +705,9 @@ pub mod env {
 
     impl Default for VkAshAPID {
         fn default() -> Self {
+            let mut _r;
             unsafe {
-                return Self::build()
+                _r = Self::build()
                     .build_add_p_instance_layer_name(name::layer::KHR_VALIDATION.as_ptr())
                     .build_add_p_instance_ext_name(name::khr::WIN32_SURFACE.as_ptr())
                     .build_add_p_instance_ext_name(name::khr::SURFACE.as_ptr())
@@ -960,17 +715,24 @@ pub mod env {
                     .build_instance_checked()
                     .build_choose_debug_call_back(Option::Some(Self::callback_vk_debug))
                     .build_debug_util_checked()
-                    .build_os_drive_loader()
-                    .build_gpu_device_auto()
-                    .build_get_queue_family_from_gpu()
                     .build_add_p_device_ext_name_checked(name::khr::SWAPCHAIN.as_ptr())
-                    .build_vk_device_checked()
                     .build_surface_loader_checked()
-                    .build_mem_properties()
-                    .build_gpu_properties()
-                    .build_gpu_feature()
+                    .build_os_drive_loader()
+                    .build_gpu_device()
                     .check_push_out();
             }
+
+            // dbg!(&_r.vk_physical_device_vec.as_ref().unwrap().len());
+            // ________________dev_stop________________!();
+            // dbg!(&_r.vk_physical_device_vec.as_ref().unwrap()[0]);
+            // ________________dev_stop________________!();
+            // dbg!(&_r.vk_physical_device_vec.as_ref().unwrap()[1]);
+            // ________________dev_stop________________!();
+            // dbg!(&_r.vk_physical_device_vec.as_ref().unwrap()[2]);
+            // ________________dev_stop________________!();
+            // dbg!(&_r.vk_physical_device_vec.as_ref().unwrap()[3]);
+
+            return _r;
         }
     }
 

@@ -134,6 +134,10 @@ vk_debug_false = []
 vk_debug_print2console = []
 vk_debug_true = []
 
+win_debug = ["win_debug_print_os_false"]
+win_debug_print_os_false = []
+win_debug_print_os_true = []
+
 root_path = ["root_path_debug"]
 root_path_debug = []
 root_path_editor = []
@@ -280,7 +284,7 @@ config_DEFAULT_MEM_PROPERTY_TYPE_HOST_COHERENT_BIT = []
 config_DEFAULT_MEM_PROPERTY_TYPE_HOST_CACHED_BIT = []
 config_DEFAULT_MEM_PROPERTY_TYPE_LAZILY_ALLOCATED_BIT = []
 
-config_DEFAULT_IS_PERFORMANCE_FIRST = ["config_DEFAULT_IS_PERFORMANCE_FIRST_true"]
+config_DEFAULT_IS_PERFORMANCE_FIRST = ["config_DEFAULT_IS_PERFORMANCE_FIRST_false"]
 config_DEFAULT_IS_PERFORMANCE_FIRST_true = []
 config_DEFAULT_IS_PERFORMANCE_FIRST_false = []
 

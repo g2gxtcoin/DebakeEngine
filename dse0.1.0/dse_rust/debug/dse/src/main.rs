@@ -4,6 +4,7 @@ mod convert;
 #[cfg(feature = "example_use")]
 mod examples;
 mod ext_api;
+mod hardware;
 mod input;
 mod log;
 mod manager;
@@ -155,6 +156,7 @@ fn main() -> std::io::Result<()> {
 
     exe.renderer1 = exe
         .renderer1
+        .build_bind_gpu(0)
         .build_specify_handle(
             exe.win_window.wndhandle_ptr(),
             exe.win_window.module_handle_ptr(),
@@ -167,8 +169,8 @@ fn main() -> std::io::Result<()> {
 
     exe.render_cmd1 = exe
         .render_cmd1
+        .build_bind_gpu_queue(0)
         .build_cmd_usage(CmdUsage::MANUAL_MODE | CmdUsage::PIPE_GRAPHIC)
-        .build_api_device(&dat.vk_api)
         .build_bind_renderer(&exe.renderer1);
 
     //
@@ -220,6 +222,7 @@ fn main() -> std::io::Result<()> {
     exe.render_cmd1
         .bind_task_queue(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
 
+
     ////////////////////////////////////////////////////////
     ////                                                ////
     ////                   SHADER INIT                  ////
@@ -233,6 +236,7 @@ fn main() -> std::io::Result<()> {
             .join("asset")
             .join("shader"),
     );
+
 
     for fi in exe
         .resource_loader
@@ -288,13 +292,17 @@ fn main() -> std::io::Result<()> {
             .end()
     }
 
+
     exe.renderer1
         .tak_create_shader_module(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
+
+                
 
     exe.renderer1.exe_shader_module(
         dat.shader_mod.get_data_mut(exe.renderer1.id).unwrap(),
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
+
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -450,7 +458,7 @@ fn main() -> std::io::Result<()> {
     ////                                                ////
     ////////////////////////////////////////////////////////
 
-    // FBO
+    // // FBO
     exe.renderer1
         .tak_create_fbo(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
 
@@ -470,8 +478,10 @@ fn main() -> std::io::Result<()> {
     //todo!();
     exe.renderer1.tak_create_vbo(
         DeviceBufferUsage::MEM_TYPE_RAM_VISIBLE,
+        true,
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
+
 
     exe.renderer1.exe_vertex_buffer(
         dat.vertex_buf.get_data_mut(exe.renderer1.id).unwrap(),
@@ -487,6 +497,7 @@ fn main() -> std::io::Result<()> {
         &dat.vk_api,
         &mut tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
+
 
     // CBO
     exe.renderer1.tak_create_cmd_buffer(
@@ -514,14 +525,52 @@ fn main() -> std::io::Result<()> {
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
+
     ////////////////////////////////////////////////////////
     ////                                                ////
     ////            RENDERER COMMAND INIT               ////
     ////                                                ////
     ////////////////////////////////////////////////////////
 
+    // tak render cmd
     exe.render_cmd1
-        .tak_begin_cmd(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
+        .tak_bind_render_pipe(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
+    exe.render_cmd1.tak_begin_render_pass(
+        0,
+        tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
+    );
+    exe.render_cmd1.tak_bind_model(
+        0,
+        tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
+    );
+    exe.render_cmd1
+        .tak_draw(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
+    exe.render_cmd1
+        .tak_end_render_pass(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
+
+    exe.render_cmd1
+        .begin_cmd(dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap());
+
+    exe.render_cmd1.exe_model(
+        dat.model
+            .get_data_mut(exe.model_vbuf_mesh_mapping.id)
+            .unwrap(),
+        dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.vertex_buf.get_data_ref(exe.renderer1.id).unwrap(),
+        dat.mesh
+            .get_data_mut(exe.model_vbuf_mesh_mapping.id)
+            .unwrap(),
+        tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
+    );
+
+    exe.render_cmd1.exe_graphic_rander_pipeline(
+        dat.graphic_renderer_pipeline
+            .get_data_mut(exe.renderer1.id)
+            .unwrap(),
+        dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
+        dat.frame_buf.get_data_mut(exe.renderer1.id).unwrap(),
+        &mut tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
+    );
 
     exe.render_cmd1.exe_cmd_buffer(
         dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
@@ -529,70 +578,24 @@ fn main() -> std::io::Result<()> {
     );
 
     exe.render_cmd1
-        .tak_bind_render_pipe(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
-
-    exe.render_cmd1.tak_begin_render_pass(
-        0,
-        tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
-    );
-
-    // exe.render_cmd1.begin_render_pass(
-    //     0,
-    //     dat.graphic_renderer_pipeline
-    //         .get_data_mut(exe.renderer1.id)
-    //         .unwrap(),
-    //     dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
-    //     dat.frame_buf.get_data_mut(exe.renderer1.id).unwrap(),
-    // );
-
-    exe.render_cmd1.exe_graphic_rander_pipeline(
-        dat.graphic_renderer_pipeline
-            .get_data_mut(exe.renderer1.id)
-            .unwrap(),
-        dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
-        dat.frame_buf.get_data_mut(exe.renderer1.id).unwrap(),
-        &mut tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
-    );
-
-    exe.render_cmd1.exe_graphic_rander_pipeline(
-        dat.graphic_renderer_pipeline
-            .get_data_mut(exe.renderer1.id)
-            .unwrap(),
-        dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
-        dat.frame_buf.get_data_mut(exe.renderer1.id).unwrap(),
-        &mut tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
-    );
-
-
-    exe.render_cmd1.bind_specify_vertex(
-        0,
-        0,
-        0,
-        Option::None,
-        dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
-        dat.graphic_renderer_pipeline
-            .get_data_mut(exe.renderer1.id)
-            .unwrap(),
-        dat.model
-            .get_data_mut(exe.model_vbuf_mesh_mapping.id)
-            .unwrap(),
-        dat.mesh
-            .get_data_mut(exe.model_vbuf_mesh_mapping.id)
-            .unwrap(),
-        dat.vertex_buf.get_data_mut(exe.renderer1.id).unwrap(),
-    );
-
-    exe.render_cmd1
-        .draw(0, dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap());
-
-    exe.render_cmd1
-        .end_render_pass(0, dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap());
-
-
-    exe.render_cmd1
         .end_cmd(dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap());
 
-    ________________dev_stop________________!();
+
+    ////////////////////////////////////////////////////////
+    ////                                                ////
+    ////            FIRST FRAME SUBMIT INIT             ////
+    ////                                                ////
+    ////////////////////////////////////////////////////////
+
+    // exe.render_cmd1.
+
+    exe.renderer1
+        .tak_wait_fences(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
+
+    exe.renderer1.exe_render_cmdsync(
+        dat.sync.get_data_mut(exe.render_cmd1.id).unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
+    );
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -609,11 +612,13 @@ fn main() -> std::io::Result<()> {
     ////////////////////////////////////////////////////////
 
     let mut count = 0;
+    let mut fps;
 
     ________________dev_stop________________!("!!!prepare main loop !!!");
 
     while unsafe { workarea::WORKAREA_CLOSE == false } {
         count = count + 1;
+        fps = exe.timer.fps_smooth().to_string();
         utc_counter.from1970(&exe.timer.systime().as_secs());
 
         unsafe {
@@ -628,7 +633,10 @@ fn main() -> std::io::Result<()> {
         //std::thread::sleep(std::time::Duration::new(0, 001000_0000));
         exe.renderer1
             .wait_fences(dat.sync.get_data_ref(exe.render_cmd1.id).unwrap());
-        dbg!(exe.timer.fps());
+
+        let title_addnon =
+            "  fps:".to_owned() + fps.as_str() + "  frame:" + count.to_string().as_str();
+        exe.win_window.update_win_title(title_addnon.to_string());
 
         #[cfg(feature = "log_print_during_dev")]
         log::print2console_once();

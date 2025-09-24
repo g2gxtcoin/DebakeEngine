@@ -14,6 +14,7 @@ pub mod env {
         ________________dev_stop________________, cast_mut, cast_ref, dev_dbg,
         ext_api::graphic::env::VkAshAPID,
         get, get_mut,
+        hardware::gpu::env::DseGPU,
         log::send2logger,
         manager::{
             datum::{self, env::Datum},
@@ -41,8 +42,8 @@ pub mod env {
         },
     };
 
-    #[derive(Default)]
-    #[derive(Debug)]
+    #[derive(Default, Debug)]
+    #[allow(unused)]
     pub enum RenderCmdTask {
         #[default]
         None,
@@ -66,14 +67,32 @@ pub mod env {
                 usize,
             >,
         ),
+        BindModel(
+            u32, // first_bind_index
+            call_back_template::Callback0MR6R<
+                RenderCmdE,
+                Datum<ModelD>,
+                u32,
+                Datum<DeviceBuffer<vk::CommandBuffer>>,
+                Datum<model::mesh::env::MeshD>,
+                Datum<DeviceBuffer<vk::Buffer>>,
+            >,
+        ),
+        Draw(call_back_template::Callback0MR2R<RenderCmdE, Datum<DeviceBuffer<vk::CommandBuffer>>>),
+        EndRenderPass(
+            call_back_template::Callback0MR2R<RenderCmdE, Datum<DeviceBuffer<vk::CommandBuffer>>>,
+        ),
+        SubmitCmd(
+            call_back_template::Callback0MR2R<RenderCmdE, Datum<DeviceBuffer<vk::CommandBuffer>>>,
+        ),
     }
 
     #[allow(unused)]
     impl CmdUsage {
         pub const DEFAULT: u64 = 0x0;
         //
-        pub const MANUAL_MODE: u64 = 0b0000; // default
-        pub const AUTO_MODE: u64 = 0b0001;
+        pub const MANUAL_MODE: u64 = 0b0000; // default | performance first
+        pub const AUTO_MODE: u64 = 0b0001; //
         pub const PEOTECTED_MODE: u64 = 0b0010;
         pub const SUBCMD_MODE: u64 = 0b0100;
         //
@@ -119,40 +138,49 @@ pub mod env {
             return _r;
         }
 
-        pub fn to_pool_create_info(usage_in: u64, api_in: &VkAshAPID) -> vk::CommandPoolCreateInfo {
-            let mut _r = vk::CommandPoolCreateInfo::default();
+        pub fn to_pool_create_info(usage_in: u64, gpu_in: &DseGPU) -> vk::CommandPoolCreateInfo {
+            let mut _r = vk::CommandPoolCreateInfo {
+                s_type: vk::StructureType::COMMAND_POOL_CREATE_INFO,
+                p_next: null(),
+                flags: Default::default(),
+                queue_family_index: 0,
+            };
             //
             match usage_in & CmdUsage::AUTO_MODE {
                 0 => _r.flags = vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
                 _ => _r.flags = vk::CommandPoolCreateFlags::TRANSIENT,
             }
             //
-            _r.queue_family_index = 0;
-            let _queue_vec = unsafe {
-                api_in
-                    .ash_instance_ref()
-                    .unwrap()
-                    .get_physical_device_queue_family_properties(
-                        *api_in.vk_gpu_device_ref().unwrap(),
-                    )
-            };
 
-            let mut _queue_index = 0;
+            let _queue_family_vec = gpu_in.queue_families.as_ref().unwrap();
+            let mut _queue_family_index = 0;
+
             if CmdUsage::to_queue_flag(usage_in) != 0 {
-                for qfi in _queue_vec.iter().enumerate() {
-                    if qfi
-                        .1
-                        .queue_flags
-                        .contains(vk::QueueFlags::from_raw(CmdUsage::to_queue_flag(usage_in)))
-                        && qfi.1.queue_flags.as_raw() > _queue_index
-                    {
-                        _queue_index = qfi.0 as u32;
-                        _r.queue_family_index = _queue_index;
+                for qfi in _queue_family_vec.iter().enumerate() {
+                    match usage_in & CmdUsage::AUTO_MODE {
+                        0 => {
+                            if qfi.1.queue_flags.contains(vk::QueueFlags::from_raw(
+                                CmdUsage::to_queue_flag(usage_in),
+                            )) && qfi.1.queue_flags.as_raw() < _queue_family_index
+                            {
+                                _queue_family_index = qfi.0 as u32;
+                                _r.queue_family_index = _queue_family_index;
+                            }
+                        }
+                        _ => {
+                            if qfi.1.queue_flags.contains(vk::QueueFlags::from_raw(
+                                CmdUsage::to_queue_flag(usage_in),
+                            )) && qfi.1.queue_flags.as_raw() > _queue_family_index
+                            {
+                                _queue_family_index = qfi.0 as u32;
+                                _r.queue_family_index = _queue_family_index;
+                            }
+                        }
                     }
                 }
             }
 
-            _r.queue_family_index = _queue_index;
+            _r.queue_family_index = _queue_family_index;
 
             return _r;
         }
@@ -165,10 +193,14 @@ pub mod env {
         pub index_graphic_pipeline_task: usize,
         pub idnex_sync_task: usize,
         pub index_pipeline_task: usize,
+        pub index_model_task: usize,
 
         pub id_bind_exe_renderer: u64,
         pub index_current_pipeline: usize,
         pub index_current_cmd_buffer: usize,
+        // set by binding render
+        pub index_gpu_queue: u32,
+        pub index_gpu: usize,
     }
 
     pub struct CmdUsage {}
@@ -236,6 +268,11 @@ pub mod env {
             return _r;
         }
 
+        pub fn build_bind_gpu_queue(mut self, queue_index: u32) -> Self {
+            self.cmd_attachment.index_gpu_queue = queue_index;
+            return self;
+        }
+
         fn _init_fence_info(&mut self) {
             self.buf_fence_info = Some(vk::FenceCreateInfo {
                 s_type: vk::StructureType::FENCE_CREATE_INFO,
@@ -274,24 +311,15 @@ pub mod env {
             return self;
         }
 
-        pub fn build_bind_renderer(mut self, ref_rin: &RendererE) -> Self {
-            self.render_area = Some(ref_rin.swapchain_create_info.unwrap().image_extent.clone());
-            self.min_swapchainsurf_num = ref_rin.swapchain_create_info.unwrap().min_image_count;
-            self.cmd_attachment.id_bind_exe_renderer = ref_rin.id;
-            return self;
-        }
-
-        pub fn build_pipeline_index(mut self, iin: usize) -> Self {
-            self.cmd_attachment.index_current_pipeline = iin;
-            return self;
-        }
-
-        pub fn build_api_device(mut self, api_in: &VkAshAPID) -> Self {
-            self.device_p = Some(api_in.ash_device_ref().unwrap() as *const ash::Device as usize);
+        pub fn build_bind_renderer(mut self, rin_ref: &RendererE) -> Self {
+            self.render_area = Some(rin_ref.swapchain_create_info.unwrap().image_extent.clone());
+            self.min_swapchainsurf_num = rin_ref.swapchain_create_info.unwrap().min_image_count;
+            self.cmd_attachment.id_bind_exe_renderer = rin_ref.id;
+            self.device_p = Some(rin_ref.device_ref().unwrap() as *const ash::Device as usize);
 
             self.pool_create_info = Some(CmdUsage::to_pool_create_info(
                 self.cmd_attachment.usage_flag,
-                api_in,
+                rin_ref.gpu_ref().unwrap(),
             ));
 
             unsafe {
@@ -305,12 +333,19 @@ pub mod env {
             return self;
         }
 
+        pub fn build_pipeline_index(mut self, iin: usize) -> Self {
+            self.cmd_attachment.index_current_pipeline = iin;
+            return self;
+        }
+
         pub fn bind_task_queue(&mut self, tqin: &mut Datum<TaskQueue<RenderCmdTask>>) {
             self.cmd_attachment.index_cmd_buffer_task =
                 tqin.alloc_data(TaskQueue::default(), Option::None).index();
             self.cmd_attachment.index_graphic_pipeline_task =
                 tqin.alloc_data(TaskQueue::default(), Option::None).index();
             self.cmd_attachment.idnex_sync_task =
+                tqin.alloc_data(TaskQueue::default(), Option::None).index();
+            self.cmd_attachment.index_model_task =
                 tqin.alloc_data(TaskQueue::default(), Option::None).index();
         }
 
@@ -333,23 +368,9 @@ pub mod env {
             self.cmd_attachment.index_current_pipeline = index as usize;
         }
 
-        pub fn update_binding_renderer(&mut self, ref_rin: &RendererE) {
-            self.render_area = Some(ref_rin.swapchain_create_info.unwrap().image_extent.clone());
-        }
-
-        pub fn record_cmd_buf(&mut self, tin: &mut Datum<TaskQueue<RenderCmdTask>>) {
-            // tin.get_data_mut(self.cmd_attachment.index_cmd_task)
-            //     .unwrap()
-            //     .push_task(RendererTask::RecordCMD(
-            //         Self::_callback_record_cmd,
-            //     ));
-
-            todo!();
-        }
-
         pub fn exe_cmd_buffer(
             &mut self,
-            data: &Datum<DeviceBuffer<vk::CommandBuffer>>,
+            datum_cmd: &Datum<DeviceBuffer<vk::CommandBuffer>>,
             tin: &mut Datum<TaskQueue<RenderCmdTask>>,
         ) {
             let mut _tasks = get_mut!(tin.vec_mut(), self.cmd_attachment.index_cmd_buffer_task)
@@ -360,7 +381,7 @@ pub mod env {
             for ti in _tasks.task_iter_mut().unwrap() {
                 match task_interface::TaskTrait::task_ref(ti) {
                     RenderCmdTask::BeginCmd(call) => {
-                        call(self, data);
+                        call(self, datum_cmd);
                     }
                     _ => {}
                 }
@@ -382,8 +403,7 @@ pub mod env {
             .as_mut()
             .unwrap();
 
-           _tasks.begin_execute();
-           dbg!(&_tasks.task_iter_mut().unwrap());
+            _tasks.begin_execute();
             for ti in _tasks.task_iter_mut().unwrap() {
                 match task_interface::TaskTrait::task_mut(ti) {
                     RenderCmdTask::BeginRenderPass(index_fbo, call) => {
@@ -392,45 +412,62 @@ pub mod env {
                     RenderCmdTask::BindRenderPipe(call) => {
                         call(self, datum_pipe, datum_cmd);
                     }
-
+                    RenderCmdTask::EndRenderPass(call) => {
+                        call(self, datum_cmd);
+                    }
                     _ => {}
                 }
             }
             _tasks.end_execute();
         }
 
-        pub fn tak_begin_cmd(&mut self, tqin: &mut Datum<TaskQueue<RenderCmdTask>>) {
-            let mut _tasks = get_mut!(tqin.vec_mut(), self.cmd_attachment.index_cmd_buffer_task)
+        pub fn exe_model(
+            &self,
+            datum_model: &Datum<ModelD>,
+            datum_cmd: &Datum<DeviceBuffer<vk::CommandBuffer>>,
+            datum_vbuf: &Datum<DeviceBuffer<vk::Buffer>>,
+            datum_mesh: &Datum<model::mesh::env::MeshD>,
+            tin: &mut Datum<TaskQueue<RenderCmdTask>>,
+        ) {
+            let mut _tasks = get_mut!(tin.vec_mut(), self.cmd_attachment.index_cmd_buffer_task)
                 .as_mut()
                 .unwrap();
-            _tasks.push_task(RenderCmdTask::BeginCmd(Self::_callback_begin_cmd));
 
+            _tasks.begin_execute();
+            for ti in _tasks.task_iter_mut().unwrap() {
+                match task_interface::TaskTrait::task_mut(ti) {
+                    RenderCmdTask::BindModel(first_bind_index, call) => {
+                        call(
+                            self,
+                            datum_model,
+                            first_bind_index,
+                            datum_cmd,
+                            datum_mesh,
+                            datum_vbuf,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            _tasks.end_execute();
         }
 
         pub fn tak_create_semaphore(&mut self) -> Option<Vec<vk::Semaphore>> {
             todo!();
         }
 
-        pub fn tak_bind_vertex(
+        pub fn tak_bind_model(
             &mut self,
-            datum_cmd: &mut Datum<vk::CommandBuffer>,
-            datum_mesh: &mut Datum<model::mesh::env::MeshD>,
-            index_cmd: usize,
-            index_mesh: usize,
+            first_bind_index: u32,
+            tqin: &mut Datum<TaskQueue<RenderCmdTask>>,
         ) {
-            let _cmd = get_mut!(datum_cmd.vec_mut(), index_cmd).as_mut().unwrap();
-            let _mesh = get_mut!(datum_mesh.vec_mut(), index_mesh).as_mut().unwrap();
-
-            unsafe {
-                cast_ref!(ash::Device, self.device_p.unwrap()).cmd_bind_vertex_buffers(
-                    *_cmd,
-                    todo!(),
-                    todo!(),
-                    todo!(),
-                )
-            }
-
-            todo!();
+            let mut _tasks = get_mut!(tqin.vec_mut(), self.cmd_attachment.index_model_task)
+                .as_mut()
+                .unwrap();
+            _tasks.push_task(RenderCmdTask::BindModel(
+                first_bind_index,
+                Self::_callback_bind_model,
+            ));
         }
 
         pub fn tak_bind_render_pipe(&mut self, tin: &mut Datum<TaskQueue<RenderCmdTask>>) {
@@ -461,6 +498,92 @@ pub mod env {
                 fb_index,
                 Self::_callback_begin_render_pass,
             ));
+        }
+
+        pub fn tak_end_render_pass(&mut self, tqin: &mut Datum<TaskQueue<RenderCmdTask>>) {
+            let mut _tasks = get_mut!(
+                tqin.vec_mut(),
+                self.cmd_attachment.index_graphic_pipeline_task
+            )
+            .as_mut()
+            .unwrap();
+
+            _tasks.push_task(RenderCmdTask::EndRenderPass(
+                Self::_callback_end_render_pass,
+            ));
+        }
+
+        pub fn tak_draw(&mut self, tin: &mut Datum<TaskQueue<RenderCmdTask>>) {
+            let _task = get_mut!(
+                tin.vec_mut(),
+                self.cmd_attachment.index_graphic_pipeline_task
+            )
+            .as_mut()
+            .unwrap();
+
+            _task.push_task(RenderCmdTask::Draw(Self::_callback_draw));
+        }
+
+        fn _callback_bind_model(
+            cmd_slicce: &RenderCmdE,
+            datum_model: &Datum<ModelD>,
+            first_bind_index: &u32,
+            datum_cmd: &Datum<DeviceBuffer<vk::CommandBuffer>>,
+            datum_mesh: &Datum<model::mesh::env::MeshD>,
+            datum_vbuf: &Datum<DeviceBuffer<vk::Buffer>>,
+        ) {
+            //
+            let _device = cast_ref!(ash::Device, cmd_slicce.device_p.unwrap());
+            //
+            let _cmd = get!(
+                datum_cmd.vec_ref(),
+                cmd_slicce.cmd_attachment.index_current_cmd_buffer
+            )
+            .as_ref()
+            .unwrap();
+            //
+            let _binding_index: u32 = *first_bind_index;
+
+            for mi in datum_model.vec_ref().iter() {
+                let _mi = mi.as_ref().unwrap();
+                let _vbuf_index = _mi.get_attechment_index(mtid::MTID_DAT_VERTEX_BUF).unwrap();
+                let _mesh_index = _mi.get_attechment_index(mtid::MTID_DAT_MESH).unwrap();
+                let _mesh = get!(datum_mesh.vec_ref(), _mesh_index).as_ref().unwrap();
+                let _vbuf = get!(datum_cmd.vec_ref(), _vbuf_index).as_ref().unwrap();
+
+                //
+                let _vertex_buf = get!(datum_vbuf.vec_ref(), _vbuf_index)
+                    .as_ref()
+                    .unwrap()
+                    .buffer_ref()
+                    .unwrap();
+                //
+                unsafe {
+                    _device.cmd_bind_vertex_buffers(
+                        *_cmd.buffer_ref().unwrap(),
+                        _binding_index,
+                        &[*_vertex_buf],
+                        &[0],
+                    )
+                }
+            }
+        }
+
+        fn _callback_draw(
+            cmd_slicce: &RenderCmdE,
+            command_buffers: &Datum<DeviceBuffer<vk::CommandBuffer>>,
+        ) {
+            let _cmdbuf: &CommandBuffer = get!(
+                command_buffers.vec_ref(),
+                cmd_slicce.cmd_attachment.index_current_cmd_buffer
+            )
+            .as_ref()
+            .unwrap()
+            .buffer_ref()
+            .unwrap();
+            unsafe {
+                cast_ref!(ash::Device, cmd_slicce.device_p.unwrap()).cmd_draw(*_cmdbuf, 3, 1, 0, 0)
+            };
         }
 
         // push reder
@@ -593,6 +716,24 @@ pub mod env {
             };
         }
 
+        pub fn _callback_end_render_pass(
+            cmd_slicce: &RenderCmdE,
+            datum_cmd: &Datum<DeviceBuffer<vk::CommandBuffer>>,
+        ) {
+            let _cmd: &CommandBuffer = get!(
+                datum_cmd.vec_ref(),
+                cmd_slicce.cmd_attachment.index_cmd_buffer_task
+            )
+            .as_ref()
+            .unwrap()
+            .buffer_ref()
+            .unwrap();
+            unsafe {
+                cast_ref!(ash::Device, cmd_slicce.device_p.unwrap())
+                    .cmd_end_render_pass(_cmd.clone())
+            }
+        }
+
         ///
         /// # Abstract
         /// ## Example
@@ -600,10 +741,9 @@ pub mod env {
         /**
          * switch_vertex_bind_index: None:{auto find suitable vad binding index}
          */
+        #[allow(unused)]
         pub fn bind_specify_vertex(
             &mut self,
-            index_cmd: usize,
-            index_pipe: usize,
             index_model: usize,
             switch_vertex_bind_index: Option<u32>,
             datum_cmdbuf: &mut Datum<DeviceBuffer<vk::CommandBuffer>>,
@@ -613,13 +753,21 @@ pub mod env {
             datum_vbuf: &mut Datum<DeviceBuffer<vk::Buffer>>,
         ) {
             let _model = get!(datum_model.vec_ref(), index_model).as_ref().unwrap();
-            let _pipe = get!(dattum_pipe.vec_ref(), index_pipe).as_ref().unwrap();
+            let _pipe = get!(
+                dattum_pipe.vec_ref(),
+                self.cmd_attachment.index_current_pipeline
+            )
+            .as_ref()
+            .unwrap();
 
-            let _cmd_buf = get!(datum_cmdbuf.vec_ref(), index_cmd)
-                .as_ref()
-                .unwrap()
-                .buffer_ref()
-                .unwrap();
+            let _cmd_buf = get!(
+                datum_cmdbuf.vec_ref(),
+                self.cmd_attachment.index_current_cmd_buffer
+            )
+            .as_ref()
+            .unwrap()
+            .buffer_ref()
+            .unwrap();
             let _vertex_buf = get!(
                 datum_vbuf.vec_ref(),
                 _model
@@ -649,9 +797,15 @@ pub mod env {
         }
 
         #[allow(unused)]
+        pub fn draw(&self, command_buffers: &Datum<DeviceBuffer<vk::CommandBuffer>>) {
+            Self::_callback_draw(self, command_buffers);
+        }
+
+        #[allow(unused)]
         pub fn begin_cmd(&mut self, datum_cmd: &Datum<DeviceBuffer<vk::CommandBuffer>>) {
             Self::_callback_begin_cmd(self, datum_cmd);
         }
+
         #[allow(unused)]
         pub fn begin_render_pass(
             &self,
@@ -669,6 +823,7 @@ pub mod env {
             );
         }
 
+        #[allow(unused)]
         pub fn end_cmd(&mut self, datum_cmd: &Datum<DeviceBuffer<vk::CommandBuffer>>) {
             let _cmd = get!(
                 datum_cmd.vec_ref(),
@@ -678,10 +833,9 @@ pub mod env {
             .unwrap()
             .buffer_ref();
             unsafe {
-                let a = cast_ref!(ash::Device, self.device_p.unwrap())
+                cast_ref!(ash::Device, self.device_p.unwrap())
                     .end_command_buffer(*_cmd.unwrap())
                     .unwrap();
-                dbg!(a);
             };
         }
 
@@ -693,27 +847,58 @@ pub mod env {
             todo!();
         }
 
-        pub fn end_render_pass(
-            &mut self,
-            cmd_index: usize,
-            datum_cmd: &Datum<DeviceBuffer<vk::CommandBuffer>>,
-        ) {
-            let _cmd: &CommandBuffer = get!(datum_cmd.vec_ref(), cmd_index)
-                .as_ref()
-                .unwrap()
-                .buffer_ref()
-                .unwrap();
-            unsafe {
-                cast_ref!(ash::Device, self.device_p.unwrap()).cmd_end_render_pass(_cmd.clone())
-            }
+        #[allow(unused)]
+        pub fn end_render_pass(&mut self, datum_cmd: &Datum<DeviceBuffer<vk::CommandBuffer>>) {
+            Self::_callback_end_render_pass(self, datum_cmd);
         }
 
+        #[allow(unused)]
         pub fn bind_render_pipe(
             &mut self,
             datum_pipe: &mut Datum<RenderPipelineD<GraphicPipeLinePSO, GraphicPipeLinePCO>>,
             datum_cmd: &mut Datum<DeviceBuffer<vk::CommandBuffer>>,
         ) {
             Self::_callback_bind_render_pipe(self, datum_pipe, datum_cmd);
+        }
+
+        pub fn tak_submit_cmd(&mut self, tin: &mut Datum<TaskQueue<RenderCmdTask>>) {
+            let _task = get_mut!(tin.vec_mut(), self.cmd_attachment.index_cmd_buffer_task)
+                .as_mut()
+                .unwrap();
+
+            _task.push_task(RenderCmdTask::SubmitCmd(Self::_callback_submit_cmd));
+        }
+
+        pub fn submit_cmd(&mut self, datum_cmd: &Datum<DeviceBuffer<vk::CommandBuffer>>) {
+            Self::_callback_submit_cmd(self, datum_cmd);
+        }
+
+        fn _callback_submit_cmd(
+            cmd_slicce: &RenderCmdE,
+            datum_cmd: &Datum<DeviceBuffer<vk::CommandBuffer>>,
+        ) {
+            let _cmd = get!(
+                datum_cmd.vec_ref(),
+                cmd_slicce.cmd_attachment.index_current_cmd_buffer
+            )
+            .as_ref()
+            .unwrap()
+            .buffer_ref()
+            .unwrap();
+            let device_ref = cast_ref!(ash::Device, cmd_slicce.device_p.unwrap());
+            let queue = unsafe {
+                device_ref.get_device_queue(cmd_slicce.cmd_attachment.index_gpu_queue, 0)
+            };
+
+            unsafe {
+                cast_ref!(ash::Device, cmd_slicce.device_p.unwrap())
+                    .queue_submit(
+                        queue,
+                        &[vk::SubmitInfo::builder().command_buffers(&[*_cmd]).build()],
+                        vk::Fence::null(),
+                    )
+                    .unwrap();
+            };
         }
 
         ///
@@ -726,23 +911,18 @@ pub mod env {
             todo!();
         }
 
-        pub fn draw(
-            &mut self,
-            index_cmd: usize,
-            command_buffers: &mut Datum<DeviceBuffer<vk::CommandBuffer>>,
-        ) {
-            let _cmdbuf: &CommandBuffer = get!(command_buffers.vec_ref(), index_cmd)
-                .as_ref()
-                .unwrap()
-                .buffer_ref()
-                .unwrap();
-            unsafe {
-                cast_ref!(ash::Device, self.device_p.unwrap()).cmd_draw(*_cmdbuf, 3, 1, 0, 0)
-            };
+        pub fn update_binding_renderer(&mut self, ref_rin: &RendererE) {
+            self.render_area = Some(ref_rin.swapchain_create_info.unwrap().image_extent.clone());
         }
 
-        pub fn submit(&mut self) {
-            //unsafe { self.device_p.as_mut().unwrap().queue_submit(queue, submits, fence) };
+        pub fn record_cmd_buf(&mut self, tin: &mut Datum<TaskQueue<RenderCmdTask>>) {
+            // tin.get_data_mut(self.cmd_attachment.index_cmd_task)
+            //     .unwrap()
+            //     .push_task(RendererTask::RecordCMD(
+            //         Self::_callback_record_cmd,
+            //     ));
+
+            todo!();
         }
 
         pub fn create_semaphore(&mut self) {
@@ -805,8 +985,6 @@ pub mod env {
                     .destroy_command_pool(self.cmd_buffer_pool.unwrap(), None)
             };
         }
-
-        pub fn render_pass(&mut self) {}
     }
 
     impl Default for RenderCmdAttachment {
@@ -815,6 +993,7 @@ pub mod env {
                 index_cmd_buffer_task: usize::MAX,
                 index_graphic_pipeline_task: usize::MAX,
                 idnex_sync_task: usize::MAX,
+                index_model_task: usize::MAX,
                 index_pipeline_task: usize::MAX,
                 usage_flag: Default::default(),
 
@@ -822,6 +1001,8 @@ pub mod env {
 
                 index_current_pipeline: 0,
                 index_current_cmd_buffer: 0,
+                index_gpu_queue: 0,
+                index_gpu: 0,
             }
         }
     }

@@ -3,10 +3,14 @@
 pub mod env {
     #[cfg(feature = "std_use_time")]
     use std::time::{self, Duration, SystemTime};
+
+    use crate::renderer::cfg;
     pub struct TimerE {
         id: u64,
         program_start_time: time::SystemTime,
         last_time: u128,
+        fps_smooth: f64,
+        fps_smooth_factor: f64,
     }
 
     #[derive(Clone)]
@@ -33,22 +37,47 @@ pub mod env {
 
     impl Default for TimerE {
         fn default() -> Self {
+            let _fps = match cfg::env::RENDERER::DEFAULT_RENDER_FRAME_STRIDE {
+                0 => 1.0,
+                _ => {
+                    1000_0000_00.0
+                        / (cfg::env::RENDERER::DEFAULT_RENDER_FRAME_STRIDE as f64)
+                }
+            };
             Self {
                 id: 0,
                 program_start_time: time::SystemTime::now(),
                 last_time: 0,
+                fps_smooth: 0.0,
+                fps_smooth_factor: 1.0 - (1.0 / _fps),
             }
         }
     }
 
     impl TimerE {
-        /// use it to update timer
+
+        
+        pub fn build_smooth_fps_factor(mut self, factor: f64) -> Self {
+            self.fps_smooth_factor = factor.fract();
+            return self;
+        }
+
+        /// use it to get current fps
         pub fn fps(&mut self) -> f64 {
             let _now = self.get_programtime().as_micros();
             let _fps = f64::from(1000000.0 / ((_now - self.last_time) as f64));
+            let _fps = ((_fps * 100.0).ceil()) / 100.0;
 
             self.last_time = _now;
             return _fps;
+        }
+
+        pub fn fps_smooth(&mut self) -> f64 {
+            self.fps_smooth = self.fps_smooth_factor * self.fps_smooth
+                + (1.0 - self.fps_smooth_factor) * self.fps();
+            self.fps_smooth = ((self.fps_smooth * 100.0).ceil()) / 100.0;
+
+            return self.fps_smooth;
         }
 
         pub fn delta_time_ns(&self) -> u64 {
@@ -62,9 +91,14 @@ pub mod env {
             self.id = id_in;
         }
 
+        pub fn set_smooth_fps_factor(&mut self, factor: f64) {
+            self.fps_smooth_factor = factor.fract();
+        }
+
         pub fn id_mut(&mut self) -> &mut u64 {
             return &mut self.id;
         }
+
         pub fn build(self) -> Self {
             return self;
         }

@@ -11,6 +11,12 @@ const DEFAULT_INPUT_DETECT_OFFSET_MS: u32 = 0030000000;
 #[cfg(feature = "config_DEFAULT_INPUT_DETECT_OFFSET_MS_16")]
 const DEFAULT_INPUT_DETECT_OFFSET_MS: u32 = 0016000000;
 
+#[cfg(feature = "env_os_win")]
+#[cfg(feature = "win_debug_print_os_true")]
+const DEBUG_WIN_OS_ERROR: bool = true;
+
+const DEBUG_WIN_OS_ERROR: bool = false;
+
 //input
 #[cfg(feature = "env_os_win")]
 #[cfg(feature = "env_bit_64bit")]
@@ -38,7 +44,7 @@ pub mod env {
     use crate::input::env::InputUnit1D;
     use crate::{dev_dbg, ________________dev_stop________________, input};
 
-    use super::{DEFAULT_INPUT_DETECT_OFFSET_MS, GLOBAL_KRYBORAD_HOOK, GLOBAL_MOUSE_HOOK};
+    use super::{DEBUG_WIN_OS_ERROR, DEFAULT_INPUT_DETECT_OFFSET_MS, GLOBAL_KRYBORAD_HOOK, GLOBAL_MOUSE_HOOK};
 
     pub struct WinInputE {
         id: u64,
@@ -154,7 +160,10 @@ pub mod env {
                     DispatchMessageW(self.msg_ptr);
                 }
             }
-            dev_dbg!(std::io::Error::last_os_error());
+            if DEBUG_WIN_OS_ERROR{
+                dev_dbg!(std::io::Error::last_os_error());
+            }
+            
         }
 
         // 未完工

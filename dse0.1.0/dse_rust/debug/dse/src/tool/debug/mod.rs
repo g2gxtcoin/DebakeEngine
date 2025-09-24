@@ -14,6 +14,7 @@ macro_rules! dev_dbg {
 #[macro_export]
 macro_rules! dev_dbg_iter {
     ($content:expr) => {
+        dbg!($content.is_some());
         for pi in $content.iter() {
             dbg!(pi);
         }
