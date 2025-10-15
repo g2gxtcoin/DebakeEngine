@@ -1,0 +1,115 @@
+# 未解决BUG
+# 摘要：
+# 使用 上述编译分支(config_DEFAULT_RENDER_FPS_MAX)时未发生崩溃
+# 但当使用下述编译分支(config_DEFAULT_RENDER_FPS_UNLIMITED)进行配置编译后运行时
+# 位于 renderer::cfg::env::RENDERER中 局部常量DEFAULT_RENDER_FRAME_STRIDE会
+# 影响并最终导致 位于 shader 中 全局常量 static DEFAULT_SHADER_ENTRY_NAME
+# 的值 &'static str = "main" 发生长度变化(最终输出内容为 "main"+“随机8bit字符”)
+# 环境:
+# win10x64 64bit 
+# cargo 1.88.0 (873a06493 2025-05-10) 
+# cmake version 3.27.6
+# MSVC v143 14.44.35112
+# vulkan sdk 1.3.216
+# vk验证层报错信息: 
+# ERROR:
+# VALIDATION [UNASSIGNED-Stateless-InvalidShaderStagesArray (348874337)] :
+# 
+# Validation Error:
+# [ UNASSIGNED-Stateless-InvalidShaderStagesArray ] Object 0:
+# handle = 0x25563fab5e8, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0x14cb6661 | vkCreateGraphicsPipelines:
+# string pCreateInfos[0].pStages[0].pName contains invalid characters or is badly formed
+# ################################################################################################
+# 
+# ERROR:
+# VALIDATION [VUID-VkPipelineShaderStageCreateInfo-pName-00707 (-1282697375)] :
+# 
+#  Validation Error:
+#  [ VUID-VkPipelineShaderStageCreateInfo-pName-00707 ] Object 0:
+#  handle = 0x25563fab5e8, type = VK_OBJECT_TYPE_DEVICE; | MessageID = 0xb38b9761 | No entrypoint found named `mainؗ�` for stage VK_SHADER_STAGE_VERTEX_BIT.
+#  The Vulkan spec states:
+#  pName must be the name of an OpEntryPoint in module with an execution model that matches stage 
+#  see also (https://registry.khronos.org/vulkan/specs/latest/man/html/VkPipelineShaderStageCreateInfo.html#VUID-VkPipelineShaderStageCreateInfo-pName-00707)
+#
+# ###############################################################################################
+# 已排查原因: 
+# 在创建pipeline之前直接输出 全局常量 static DEFAULT_SHADER_ENTRY_NAME 的值为 "main" (这没错啊,难道说它在使用中被销毁了?这不可能啊)
+# 非 weit_for_fence 等待时间过短导致，使用硬编码0可正常运行。且将DEFAULT_RENDER_FRAME_STRIDE调整为30fps依旧运行崩溃
+# 非 shader decoder 原因，输出文本与存储文本一致
+# 使用config_DEFAULT_RENDER_FPS_UNLIMITE作为分支描述时 vk未报错 XD
+
+# 涉及上下文: 
+# in "dse\\src\\cargo.toml
+config_DEFAULT_FPS = ["config_DEFAULT_RENDER_FPS","config_DEFAULT_LOGICAL_FPS","config_DEFAULT_PHYSICS_FPS"]
+config_DEFAULT_RENDER_FPS = ["config_DEFAULT_RENDER_FPS_MAX"]
+config_DEFAULT_LOGICAL_FPS = ["config_DEFAULT_LOGICAL_FPS_30"]
+config_DEFAULT_PHYSICS_FPS = ["config_DEFAULT_PHYSICS_FPS_30"]
+
+config_DEFAULT_RENDER_FPS_MAX = []
+config_DEFAULT_LOGICAL_FPS_MAX = []
+config_DEFAULT_PHYSICS_FPS_MAX = []
+
+# config_DEFAULT_RENDER_FPS_UNLIMITED = []
+# config_DEFAULT_LOGICAL_FPS_UNLIMITED = []
+# config_DEFAULT_PHYSICS_FPS_UNLIMITED = []
+
+config_DEFAULT_RENDER_FPS_120 = []
+config_DEFAULT_LOGICAL_FPS_120 = []
+config_DEFAULT_PHYSICS_FPS_120 = []
+
+config_DEFAULT_RENDER_FPS_60 = []
+config_DEFAULT_LOGICAL_FPS_60 = []
+config_DEFAULT_PHYSICS_FPS_60 = []
+
+config_DEFAULT_RENDER_FPS_30 = []
+config_DEFAULT_LOGICAL_FPS_30 = []
+config_DEFAULT_PHYSICS_FPS_30 = []
+
+# in "dse\\src\\main.rs" 433
+    exe.renderer1
+        .tak_create_graphic_pipeline(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
+
+    exe.renderer1.exe_graphic_pipeline(
+        dat.graphic_renderer_pipeline
+            .get_data_mut(exe.renderer1.id)
+            .unwrap(),
+        tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
+    );
+
+# in "dse\\src\\shader\\mod.rs" 3
+pub static  DEFAULT_SHADER_ENTRY_NAME: &'static str = "main";
+
+# in "dse\\src\\shader\\mod.rs" 68
+        pub fn pipe_stage_info(&self) -> Result<vk::PipelineShaderStageCreateInfo, ()> {
+            if self.entity.is_some() {
+                return Ok(vk::PipelineShaderStageCreateInfo {
+                    s_type: vk::StructureType::PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    p_next: null(),
+                    flags: Default::default(),
+                    stage: self.stage,
+                    module: self.entity.unwrap(),
+                    p_name: DEFAULT_SHADER_ENTRY_NAME.as_ptr() as *const i8, // 其实没想明白 vulkan是怎么把*const i8的长度确定下来的
+                    p_specialization_info: null(),
+                });
+            }
+
+# in "dse\\src\\renderer\\cfg\\mod.rs" 292
+        #[cfg(feature = "config_DEFAULT_RENDER_FPS_120")]
+        pub const DEFAULT_RENDER_FRAME_STRIDE: u64 = 1000_0000_00 / 120;
+        #[cfg(feature = "config_DEFAULT_RENDER_FPS_60")]
+        pub const DEFAULT_RENDER_FRAME_STRIDE: u64 = 1000_0000_00 / 60;
+        #[cfg(feature = "config_DEFAULT_RENDER_FPS_30")]
+        pub const DEFAULT_RENDER_FRAME_STRIDE: u64 = 1000_0000_00 / 30;
+        #[cfg(feature = "config_DEFAULT_RENDER_FPS_MAX")]
+        pub const DEFAULT_RENDER_FRAME_STRIDE: u64 = 0;
+        // UNKNOW BUG
+        #[cfg(feature = "config_DEFAULT_RENDER_FPS_UNLIMITED")]
+        pub const DEFAULT_RENDER_FRAME_STRIDE: u64 = 0;
+
+# 已解决
+# 解决方式添加全局变量
+/// - 专门用于 PipelineShaderStageCreateInfo的数据
+/// - PipelineShaderStageCreateInfo 中的 p_name 依据\0 进行末尾检测
+pub static SHADER_ENTRY_NAME_RAW: &'static ffi::CStr =
+    unsafe { ffi::CStr::from_bytes_with_nul_unchecked(b"main\0") };
+

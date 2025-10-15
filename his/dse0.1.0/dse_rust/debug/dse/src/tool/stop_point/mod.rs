@@ -1,0 +1,23 @@
+#[cfg(feature = "debake_dev")]
+#[macro_export]
+macro_rules! ________________dev_stop________________ {
+    ( ) => {{
+        // std::thread::sleep(std::time::Duration::new(u64::MAX, 0));
+        println!("dev_stop at {:?} in {:?} {:?}.\npause?(-p).\ncontinues?(press Enter)", std::time::SystemTime::now(),file!(),line!());
+        let mut _buf = String::new();
+        let _ = std::io::stdin().read_line(&mut _buf);
+        if _buf== "-p\r\n" {
+            std::thread::sleep(std::time::Duration::new(u64::MAX, 0));
+        }
+    }};
+    ($msg:expr) =>{
+        println!($msg);
+        ________________dev_stop________________!();
+    }
+}
+
+#[cfg(feature = "debake_rt")]
+#[macro_export]
+macro_rules! rt_stop {
+    ( ) => {};
+}

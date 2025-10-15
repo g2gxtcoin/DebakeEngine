@@ -1,0 +1,13 @@
+### begin attribute
+flag = ["#"]
+resource = ["..", "asset", "model", "test.glb"]
+register = ["dat","mesh","test"]
+### end attribute
+
+### begin meta
+[dat.mesh.test]
+id = "#register"
+buffer = "#resource"
+
+### end meta
+sijiao
