@@ -42,7 +42,7 @@ pub mod env {
     };
 
     use crate::input::env::InputUnit1D;
-    use crate::{dev_dbg, ________________dev_stop________________, input};
+    use crate::{dev_dbg, ________________dev_break________________, input};
 
     use super::{DEBUG_WIN_OS_ERROR, DEFAULT_INPUT_DETECT_OFFSET_MS, GLOBAL_KRYBORAD_HOOK, GLOBAL_MOUSE_HOOK};
 

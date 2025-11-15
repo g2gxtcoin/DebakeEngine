@@ -80,6 +80,7 @@ pub mod env {
             return self.fps_smooth;
         }
 
+        // 
         pub fn delta_time_ns(&self) -> u64 {
             let _now = self.get_programtime().as_micros();
             let _r: u64 = (_now - self.last_time) as u64;

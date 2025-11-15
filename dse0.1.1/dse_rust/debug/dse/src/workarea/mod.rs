@@ -5,7 +5,7 @@ use glam::Vec4Swizzles;
 use crate::{
     get,
     model::rectangle::env::{Rect, RectMode},
-    tool::stop_point,
+    tool::break_point,
 };
 
 #[cfg(feature = "env_os_win")]

@@ -62,6 +62,9 @@ pub mod env {
 
         #[cfg(feature = "config_DEFAULT_SEMAPHORE_COUNT_1")]
         pub const DEFAULT_SEMAPHORE_COUNT: usize = 1;
+        pub const INDEX_INIT_IMG_STAGE_SEMAPHORE: usize = 0;
+        pub const INDEX_GET_IMG_STAGE_SEMAPHORE: usize = 1;
+        pub const INDEX_OUT_IMG_STAGE_SEMAPHORE: usize = 2;
 
         #[cfg(feature = "config_DEFAULT_COMMAND_BUFFER_INDEX_BINDING_MODE_CUSTOM")]
         pub const DEFAULT_COMMAND_BUFFER_INDEX_BINDING_AUTO: bool = true;
@@ -274,6 +277,19 @@ pub mod env {
             Rect2D, VertexInputAttributeDescription, VertexInputBindingDescription, Viewport,
         };
 
+        //
+        pub const INDEX_ATTACHMENT_DEFAULT: usize = 0;
+        pub const INDEX_ATTACHMENT_COLOR_PASS: usize = 0;
+        pub const INDEX_ATTACHMENT_DEPTH_PASS: usize = 1;
+        pub const INDEX_ATTACHMENT_STENCIL_PASS: usize = 2;
+
+        //
+        pub const DEFAULT_ATTACHMENT_VEC: [vk::AttachmentDescription; 2] = [
+            DEFAULT_ATTACHMENT_PRESENT_SURF,
+            DEFAULT_ATTACHMENT_DEPTH_PASS,
+            // DEFAULT_ATTACHMENT_STENCIL_PASS,
+        ];
+
         pub const DEFAULT_ATTACHMENT: vk::AttachmentDescription = vk::AttachmentDescription {
             flags: vk::AttachmentDescriptionFlags::empty(),
             format: vk::Format::R8G8B8A8_UNORM,
@@ -282,10 +298,99 @@ pub mod env {
             store_op: vk::AttachmentStoreOp::STORE,
             stencil_load_op: vk::AttachmentLoadOp::LOAD,
             stencil_store_op: vk::AttachmentStoreOp::STORE,
-            initial_layout: vk::ImageLayout::PREINITIALIZED,
+            initial_layout: vk::ImageLayout::GENERAL,
             final_layout: vk::ImageLayout::GENERAL,
         };
 
+        pub const DEFAULT_ATTACHMENT_DEPTH_PASS: vk::AttachmentDescription =
+            vk::AttachmentDescription {
+                flags: vk::AttachmentDescriptionFlags::empty(),
+                format: vk::Format::D16_UNORM,
+                //format: vk::Format::R8G8B8A8_UNORM,
+                samples: vk::SampleCountFlags::TYPE_1,
+                load_op: vk::AttachmentLoadOp::LOAD,
+                store_op: vk::AttachmentStoreOp::STORE,
+                stencil_load_op: vk::AttachmentLoadOp::LOAD,
+                stencil_store_op: vk::AttachmentStoreOp::STORE,
+                initial_layout: vk::ImageLayout::PREINITIALIZED,
+                final_layout: vk::ImageLayout::GENERAL,
+            };
+
+        pub const DEFAULT_ATTACHMENT_STENCIL_PASS: vk::AttachmentDescription =
+            vk::AttachmentDescription {
+                flags: vk::AttachmentDescriptionFlags::empty(),
+                format: vk::Format::D16_UNORM,
+                samples: vk::SampleCountFlags::TYPE_1,
+                load_op: vk::AttachmentLoadOp::LOAD,
+                store_op: vk::AttachmentStoreOp::STORE,
+                stencil_load_op: vk::AttachmentLoadOp::LOAD,
+                stencil_store_op: vk::AttachmentStoreOp::STORE,
+                initial_layout: vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL,
+                final_layout: vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL,
+            };
+
+        pub const DEFAULT_ATTACHMENT_COLOR_PASS: vk::AttachmentDescription =
+            vk::AttachmentDescription {
+                flags: vk::AttachmentDescriptionFlags::empty(),
+                format: vk::Format::R8G8B8A8_UNORM,
+                samples: vk::SampleCountFlags::TYPE_1,
+                load_op: vk::AttachmentLoadOp::LOAD,
+                store_op: vk::AttachmentStoreOp::STORE,
+                stencil_load_op: vk::AttachmentLoadOp::LOAD,
+                stencil_store_op: vk::AttachmentStoreOp::STORE,
+                initial_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            };
+
+        pub const DEFAULT_ATTACHMENT_PRESENT_SURF: vk::AttachmentDescription =
+            vk::AttachmentDescription {
+                flags: vk::AttachmentDescriptionFlags::empty(),
+                format: vk::Format::R8G8B8A8_UNORM,
+                samples: vk::SampleCountFlags::TYPE_1,
+                load_op: vk::AttachmentLoadOp::LOAD,
+                store_op: vk::AttachmentStoreOp::STORE,
+                stencil_load_op: vk::AttachmentLoadOp::LOAD,
+                stencil_store_op: vk::AttachmentStoreOp::STORE,
+                initial_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+                final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+            };
+
+        // 
+        pub const DEFAULT_ATTACHEMENT_REF_COLOR_PASS_VEC: [vk::AttachmentReference; 1] =
+            [DEFAULT_ATTACHEMENT_REF_COLOR_PASS];
+        pub const DEFAULT_ATTACHEMENT_REF_INPUT_PASS_VEC: [vk::AttachmentReference; 1] =
+            [DEFAULT_ATTACHEMENT_REF_COLOR_PASS];
+
+        pub const DEFAULT_ATTACHEMENT_REF: vk::AttachmentReference = vk::AttachmentReference {
+            attachment: INDEX_ATTACHMENT_DEFAULT as u32,
+            layout: vk::ImageLayout::GENERAL,
+        };
+
+        pub const DEFAULT_ATTACHEMENT_REF_INPUT_PASS: vk::AttachmentReference =
+            vk::AttachmentReference {
+                attachment: INDEX_ATTACHMENT_COLOR_PASS as u32,
+                layout: vk::ImageLayout::GENERAL,
+            };
+
+        pub const DEFAULT_ATTACHEMENT_REF_COLOR_PASS: vk::AttachmentReference =
+            vk::AttachmentReference {
+                attachment: INDEX_ATTACHMENT_COLOR_PASS as u32,
+                layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            };
+
+        pub const DEFAULT_ATTACHEMENT_REF_DEPTH_PASS: vk::AttachmentReference =
+            vk::AttachmentReference {
+                attachment: INDEX_ATTACHMENT_DEPTH_PASS as u32,
+                layout: vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL,
+            };
+
+        pub const DEFAULT_ATTACHEMENT_REF_STENCIL_PASS: vk::AttachmentReference =
+            vk::AttachmentReference {
+                attachment: INDEX_ATTACHMENT_STENCIL_PASS as u32,
+                layout: vk::ImageLayout::STENCIL_ATTACHMENT_OPTIMAL,
+            };
+
+        ///
         pub const DEFAULT_VAD_4X4_RGBA16F: VertexInputAttributeDescription =
             VertexInputAttributeDescription {
                 location: 0,
@@ -373,7 +478,7 @@ pub mod env {
             };
 
         /// 默认与配置一致 不可更改
-        /// 需要动态配置 请与配装器中构造
+        /// 需要动态配置 请于配装器中构造
         pub const DEFAULT_VIEWPORT_STATE: PipelineViewportStateCreateInfo =
             PipelineViewportStateCreateInfo {
                 s_type: vk::StructureType::PIPELINE_VIEWPORT_STATE_CREATE_INFO,
@@ -422,7 +527,7 @@ pub mod env {
                 line_width: 1.0,
             };
 
-        pub const DEFAULT_DEPTH_STENCIL: vk::PipelineDepthStencilStateCreateInfo =
+        pub const DEFAULT_DEPTH_STENCIL_STATE: vk::PipelineDepthStencilStateCreateInfo =
             vk::PipelineDepthStencilStateCreateInfo {
                 s_type: vk::StructureType::PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
                 p_next: null(),
@@ -455,7 +560,7 @@ pub mod env {
             };
 
         /// 默认关闭颜色混合 渲染模式为不透明
-        pub const DEFAULT_COLOR_BLEND: vk::PipelineColorBlendStateCreateInfo =
+        pub const DEFAULT_COLOR_BLEND_STATE: vk::PipelineColorBlendStateCreateInfo =
             vk::PipelineColorBlendStateCreateInfo {
                 s_type: vk::StructureType::PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
                 p_next: null(),
@@ -479,29 +584,51 @@ pub mod env {
             p_push_constant_ranges: null(),
         };
 
+        pub const DEFAULT_SUBPASS_DESCRIPTION_VEC: [vk::SubpassDescription; 1] =
+            [DEFAULT_SUBPASS_DESCRIPTION];
+
+        //
         pub const DEFAULT_SUBPASS_DESCRIPTION: vk::SubpassDescription = vk::SubpassDescription {
             flags: vk::SubpassDescriptionFlags::empty(),
             pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
             input_attachment_count: 0,
             p_input_attachments: null(),
-            color_attachment_count: 0,
-            p_color_attachments: null(),
+            color_attachment_count: DEFAULT_ATTACHEMENT_REF_COLOR_PASS_VEC.len() as u32,
+            p_color_attachments: DEFAULT_ATTACHEMENT_REF_COLOR_PASS_VEC.as_ptr(),
             p_resolve_attachments: null(),
-            p_depth_stencil_attachment: null(),
+            p_depth_stencil_attachment: &DEFAULT_ATTACHEMENT_REF_DEPTH_PASS,
             preserve_attachment_count: 0,
             p_preserve_attachments: null(),
         };
 
-        pub const DEFAULT_RENDER_PASS: vk::RenderPassCreateInfo = vk::RenderPassCreateInfo {
+        pub const DEFAULT_SUBPASS_DEPENDENCY_VEC: [vk::SubpassDependency; 1] =
+            [DEFAULT_SUBPASS_DEPENDENCY];
+
+        pub const DEFAULT_PASS_DST_MASK: u32 = vk::AccessFlags::COLOR_ATTACHMENT_READ.as_raw()
+            | vk::AccessFlags::COLOR_ATTACHMENT_WRITE.as_raw();
+        pub const DEFAULT_PASS_SRC_MASK: u32 = vk::AccessFlags::empty().as_raw();
+        //let
+        pub const DEFAULT_SUBPASS_DEPENDENCY: vk::SubpassDependency = vk::SubpassDependency {
+            src_subpass: vk::SUBPASS_EXTERNAL,
+            dst_subpass: 0,
+            src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            src_access_mask: vk::AccessFlags::from_raw(DEFAULT_PASS_SRC_MASK),
+            dst_access_mask: vk::AccessFlags::from_raw(DEFAULT_PASS_DST_MASK),
+            dependency_flags: vk::DependencyFlags::empty(),
+        };
+
+        //
+        pub const DEFAULT_RENDER_SURF_PASS: vk::RenderPassCreateInfo = vk::RenderPassCreateInfo {
             s_type: vk::StructureType::RENDER_PASS_CREATE_INFO,
             p_next: null(),
             flags: vk::RenderPassCreateFlags::empty(),
-            attachment_count: 1,
-            p_attachments: &DEFAULT_ATTACHMENT,
-            subpass_count: 1,
-            p_subpasses: &DEFAULT_SUBPASS_DESCRIPTION,
-            dependency_count: 0,
-            p_dependencies: null(),
+            attachment_count: DEFAULT_ATTACHMENT_VEC.len() as u32,
+            p_attachments: DEFAULT_ATTACHMENT_VEC.as_ptr(),
+            subpass_count: DEFAULT_SUBPASS_DESCRIPTION_VEC.len() as u32,
+            p_subpasses: DEFAULT_SUBPASS_DESCRIPTION_VEC.as_ptr(),
+            dependency_count: DEFAULT_SUBPASS_DEPENDENCY_VEC.len() as u32,
+            p_dependencies: DEFAULT_SUBPASS_DEPENDENCY_VEC.as_ptr(),
         };
     }
 }

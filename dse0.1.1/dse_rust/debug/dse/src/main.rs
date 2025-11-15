@@ -57,7 +57,7 @@ use renderer::{
 use resource::env::ResourceE;
 use shader::env::{ShaderModuleD, ShaderTextD};
 use time::env::{TimerE, UtcTimeD};
-use tool::stop_point;
+use tool::break_point;
 use workarea::win::env::WinWinodwE;
 
 use crate::log::sorry;
@@ -172,7 +172,7 @@ fn main() -> std::io::Result<()> {
 
     exe.render_cmd1 = exe
         .render_cmd1
-        .build_bind_gpu_queue(0)
+        .build_bind_gpu_info(0, 0)
         .build_priority_level(vk::CommandBufferLevel::PRIMARY.as_raw())
         .build_cmd_usage(CmdUsage::MANUAL_MODE | CmdUsage::PIPE_GRAPHIC)
         .build_bind_renderer(&exe.renderer1)
@@ -181,7 +181,7 @@ fn main() -> std::io::Result<()> {
         .build_cmd_usein_pipe_stage(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT);
 
     //
-    // dat alloc
+    // dat alloc  2 renderer
     //
     dat.surface_img
         .alloc_data(Datum::default(), Some(exe.renderer1.id))
@@ -383,7 +383,6 @@ fn main() -> std::io::Result<()> {
 
     exe.renderer1.exe_surface_img(
         dat.surface_img.get_data_mut(exe.renderer1.id).unwrap(),
-        &mut dat.vk_api,
         &mut tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
 
@@ -399,8 +398,11 @@ fn main() -> std::io::Result<()> {
 
     let mut _pipeline = RenderPipelineD::<GraphicPipeLinePSO, GraphicPipeLinePCO>::build()
         .build_layout_info(renderer::cfg::env::PSO::DEFAULT_LAYOUT)
-        .build_render_pass(renderer::cfg::env::PSO::DEFAULT_RENDER_PASS)
-        .build_push_subpass(renderer::cfg::env::PSO::DEFAULT_SUBPASS_DESCRIPTION)
+        .build_render_pass(renderer::cfg::env::PSO::DEFAULT_RENDER_SURF_PASS)
+        .build_push_subpass(
+            renderer::cfg::env::PSO::DEFAULT_SUBPASS_DESCRIPTION,
+            renderer::cfg::env::PSO::DEFAULT_SUBPASS_DEPENDENCY,
+        )
         .build_push_shader_stages(dat.shader_mod.get_data_mut(exe.renderer1.id).unwrap())
         .build_push_vbd(crate::renderer::cfg::env::PSO::DEFAULT_VBD)
         .build_push_vad(
@@ -437,6 +439,8 @@ fn main() -> std::io::Result<()> {
             .unwrap(),
         tak.render_task.get_data_mut(exe.renderer1.id).unwrap(),
     );
+
+    ________________dev_break________________!("renderer_img_bind");
 
     exe.renderer1
         .tak_create_graphic_pipeline(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
@@ -513,17 +517,25 @@ fn main() -> std::io::Result<()> {
         tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
     );
 
-    exe.render_cmd1
-        .tak_wait_fences(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
-
     ////////////////////////////////////////////////////////
     ////                                                ////
     ////            RENDERER SURFACE INIT               ////
     ////                                                ////
     ////////////////////////////////////////////////////////
 
-    exe.renderer1
-        .tak_prepare_next_surfimg(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
+    // exe.renderer1
+    //     .tak_prepare_next_surfimg(tak.render_task.get_data_mut(exe.renderer1.id).unwrap());
+
+    // exe.renderer1.exe_cmd_surface(
+    //     dat.surface_img.get_data_mut(exe.render_cmd1.id).unwrap(),
+    //     dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
+    //     &mut exe.render_cmd1,
+    //     tak.render_task.get_data_mut(exe.renderer1.id).unwrap()
+    // );
+
+    exe.renderer1.aquire_surfimg(&mut exe.render_cmd1);
+
+    ________________dev_break________________!("aquire_surfimg");
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -586,13 +598,19 @@ fn main() -> std::io::Result<()> {
     exe.render_cmd1
         .end_cmd(dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap());
 
+    ________________dev_break________________!("tak_submit_cmd");
+
     exe.render_cmd1
-        .tak_submit_cmd(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
+        .tak_submit_cmd_pipeline(tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap());
 
     exe.render_cmd1.exe_cmd_buffer(
         dat.cmd_buf.get_data_mut(exe.renderer1.id).unwrap(),
         tak.rendercmd_task.get_data_mut(exe.render_cmd1.id).unwrap(),
     );
+
+    ________________dev_break________________!("1");
+
+    //dbg!(&dat.surface_img);
 
     ////////////////////////////////////////////////////////
     ////                                                ////
@@ -623,7 +641,7 @@ fn main() -> std::io::Result<()> {
     let mut count = 0;
     let mut fps;
 
-    ________________dev_stop________________!("######prepare main loop ######");
+    ________________dev_break________________!("######prepare main loop ######");
 
     while unsafe { workarea::WORKAREA_CLOSE == false } {
         count = count + 1;

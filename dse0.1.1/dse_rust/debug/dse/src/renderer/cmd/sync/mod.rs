@@ -1,7 +1,7 @@
-pub const DEFAULT_SEMAPHORE_COUNT: usize = 3;
-pub const INDEX_INIT_IMG_STAGE_SEMAPHORE: usize = 0;
-pub const INDEX_GET_IMG_STAGE_SEMAPHORE: usize = 1;
-pub const INDEX_OUT_IMG_STAGE_SEMAPHORE: usize = 2;
+// pub const DEFAULT_SEMAPHORE_COUNT: usize = 3;
+// pub const INDEX_INIT_IMG_STAGE_SEMAPHORE: usize = 0;
+// pub const INDEX_GET_IMG_STAGE_SEMAPHORE: usize = 1;
+// pub const INDEX_OUT_IMG_STAGE_SEMAPHORE: usize = 2;
 
 
 pub mod env {}

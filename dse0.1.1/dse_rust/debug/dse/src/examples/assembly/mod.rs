@@ -13,5 +13,15 @@ pub fn hellow_asm() {
             tmp = out(reg) _,
         );
     }
+    dbg!(x);
     assert_eq!(x, 4 * 6);
+}
+
+#[test]
+pub fn int3() {
+    unsafe {
+        asm!(
+            "int3",
+        );
+    }
 }

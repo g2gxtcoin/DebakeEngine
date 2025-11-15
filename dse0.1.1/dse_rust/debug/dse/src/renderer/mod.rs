@@ -8,9 +8,8 @@ pub mod pipeline;
 #[cfg(feature = "graphic_api_vulkan_1_3")]
 #[cfg(feature = "env_bit_64bit")]
 pub mod env {
-
     use crate::{
-        ________________dev_stop________________, cast_ref, dbg_dev, dev_dbg,
+        ________________dev_break________________, cast_ref, dbg_dev, dev_dbg,
         ext_api::graphic::env::{name, VkAshAPID},
         get, get_mut,
         hardware::{self, gpu::env::DseGPU},
@@ -93,9 +92,8 @@ pub mod env {
         ),
         CreateSurfaceImg(
             usize, // dat surface index
-            call_back_template::Callback5MR1R<
+            call_back_template::Callback4MR1R<
                 Datum<DeviceBuffer<SurfaceIMGBuffer>>,
-                VkAshAPID,
                 vk::ImageCreateInfo,
                 vk::ImageViewCreateInfo,
                 RendererE,
@@ -230,7 +228,7 @@ pub mod env {
         //     usize, // cmddsync idnex
         //     call_back_template::Callback2MR1R<Datum<CmdSyncD>, RendererE, usize>,
         // ),
-        GetSurfaceImage(call_back_template::Callback1MR1R<RenderCmdE, RendererE>),
+        PrepareSurfaceImage(call_back_template::Callback1MR1R<RenderCmdE, RendererE>),
     }
 
     //
@@ -330,6 +328,17 @@ pub mod env {
     }
 
     impl RendererE {
+        pub fn next_frame_time_out(&self) -> u64 {
+            let _r;
+            let _time = cast_ref!(TimerE, self.timer_p.unwrap());
+            if self.frame_stride_ns > _time.delta_time_ns() {
+                _r = self.frame_stride_ns - _time.delta_time_ns();
+            } else {
+                _r = 0;
+            }
+            return _r;
+        }
+
         pub fn set_id(&mut self, id_in: u64) {
             self.id = id_in;
         }
@@ -725,15 +734,16 @@ pub mod env {
             return self;
         }
 
-        pub fn tak_prepare_next_surfimg(&self, tin: &mut Datum<TaskQueue<RendererTask>>) {
-            let _task = get_mut!(tin.vec_mut(), self.renderer_attachment.index_cmdsync_task);
+        /// cmd buffer task
+        pub fn tak_acqpire_next_surfimg(&self, tin: &mut Datum<TaskQueue<RendererTask>>) {
+            let _task = get_mut!(tin.vec_mut(), self.renderer_attachment.index_surface_task);
 
-            _task.push_task(RendererTask::GetSurfaceImage(
+            _task.push_task(RendererTask::PrepareSurfaceImage(
                 Self::_callback_prepare_next_surfimg,
             ));
         }
 
-        pub fn prepare_surfimg(&mut self, cmd_slice: &mut RenderCmdE) {
+        pub fn aquire_surfimg(&mut self, cmd_slice: &mut RenderCmdE) {
             Self::_callback_prepare_next_surfimg(cmd_slice, self);
         }
 
@@ -767,10 +777,11 @@ pub mod env {
                 cmd_slice.cmd_attachment.index_current_surfimg_buf = _swap
                     .acquire_next_image(
                         *renderer_slice.swapchain.as_ref().unwrap(),
-                        u64::MAX,
+                        renderer_slice.next_frame_time_out(),
                         *get!(
                             cmd_slice.semaps_ref(),
-                            crate::renderer::cmd::sync::INDEX_GET_IMG_STAGE_SEMAPHORE
+                            crate::renderer::cfg::env::COMMAND::INDEX_GET_IMG_STAGE_SEMAPHORE
+                                % cmd_slice.semaps_ref().len()
                         ),
                         *get!(cmd_slice.fences_ref(), 0), //todo!()
                     )
@@ -1129,7 +1140,6 @@ pub mod env {
         pub fn exe_surface_img(
             &mut self,
             datum: &mut Datum<DeviceBuffer<SurfaceIMGBuffer>>,
-            api_in: &mut VkAshAPID,
             tin: &mut Datum<TaskQueue<RendererTask>>,
         ) {
             let mut _tasks = get_mut!(tin.vec_mut(), self.renderer_attachment.index_surface_task);
@@ -1143,7 +1153,6 @@ pub mod env {
                     }
                     RendererTask::CreateSurfaceImg(index, call, usage) => call(
                         datum,
-                        api_in,
                         DeviceBufferUsage::get_img_info(*usage).as_mut().unwrap(),
                         DeviceBufferUsage::get_img_view_info(*usage)
                             .as_mut()
@@ -1157,6 +1166,27 @@ pub mod env {
             }
 
             _tasks.end_execute();
+        }
+
+        pub fn exe_cmd_surface(
+            &mut self,
+            datum_img: &mut Datum<DeviceBuffer<SurfaceIMGBuffer>>,
+            datum_cmd: &mut Datum<DeviceBuffer<Vec<vk::CommandBuffer>>>,
+            cmd_slice: &mut RenderCmdE,
+            tin: &mut Datum<TaskQueue<RendererTask>>,
+        ) {
+            let mut _tasks = get_mut!(tin.vec_mut(), self.renderer_attachment.index_surface_task);
+            _tasks.begin_execute();
+
+            for ti in _tasks.task_iter_mut().unwrap() {
+                match task_interface::TaskTrait::task_mut(ti) {
+                    RendererTask::PrepareSurfaceImage(call) => call(cmd_slice, self),
+                    _ => todo!(),
+                };
+            }
+
+            _tasks.end_execute();
+            todo!();
         }
 
         pub fn exe_model(
@@ -1210,9 +1240,24 @@ pub mod env {
             _task.begin_execute();
             for ti in _task.task_iter_mut().unwrap() {
                 match task_interface::TaskTrait::task_mut(ti) {
-                    RendererTask::CreateGraphicPipelinePass(call) => call(data, self),
-                    RendererTask::CreateGraphicPipelineLayout(call) => call(data, self),
-                    RendererTask::CreateGraphicPipeline(call) => call(data, self),
+                    RendererTask::CreateGraphicPipelinePass(call) => {
+                        call(data, self);
+                        ________________dev_break________________!(
+                            "RendererTask::CreateGraphicPipelinePass"
+                        );
+                    }
+                    RendererTask::CreateGraphicPipelineLayout(call) => {
+                        call(data, self);
+                        // ________________dev_break________________!(
+                        //     "RendererTask::CreateGraphicPipelineLayout"
+                        // );
+                    }
+                    RendererTask::CreateGraphicPipeline(call) => {
+                        call(data, self);
+                        // ________________dev_break________________!(
+                        //     "RendererTask::CreateGraphicPipeline"
+                        // );
+                    }
                     _ => {}
                 }
             }
@@ -1399,6 +1444,10 @@ pub mod env {
             };
         }
 
+        /// # Abstract
+        /// ## Example
+        /// ## Parameter
+        /// ## Tip
         fn _create_surface(&mut self, api_in: &mut VkAshAPID) {
             if api_in.check_ext_name_exist(name::khr::WIN32_SURFACE.as_ptr())
                 && !self.wnd_handle.is_null()
@@ -1614,6 +1663,7 @@ pub mod env {
             renderer_slice: &mut RendererE,
         ) {
             for pi in datum.iter_mut() {
+
                 let _pass = unsafe {
                     renderer_slice
                         .gpu_ref()
@@ -1633,7 +1683,7 @@ pub mod env {
                                 .as_ref()
                                 .unwrap()
                                 .create_render_pass(
-                                    &&crate::renderer::cfg::env::PSO::DEFAULT_RENDER_PASS,
+                                    &&crate::renderer::cfg::env::PSO::DEFAULT_RENDER_SURF_PASS,
                                     Option::None,
                                 )
                                 .unwrap(),
@@ -1645,7 +1695,6 @@ pub mod env {
 
         fn _callback_create_custom_surface_img_view(
             datum_surfimg: &mut Datum<DeviceBuffer<SurfaceIMGBuffer>>,
-            api_bind: &mut VkAshAPID,
             vk_img_format: &mut vk::ImageCreateInfo,
             vk_render_img2surface_config: &mut vk::ImageViewCreateInfo,
             renderer_slice: &mut RendererE,
@@ -1681,7 +1730,7 @@ pub mod env {
                 .unwrap()
                 .p_queue_family_indices;
             //  create IMG
-            let img = unsafe {
+            let _img = unsafe {
                 renderer_slice
                     .gpu_ref()
                     .unwrap()
@@ -1692,7 +1741,7 @@ pub mod env {
                     .unwrap()
             };
 
-            vk_render_img2surface_config.image = img;
+            vk_render_img2surface_config.image = _img;
             vk_render_img2surface_config.format = vk_img_format.format;
 
             let alloc_size = unsafe {
@@ -1702,11 +1751,11 @@ pub mod env {
                     .logical_p
                     .as_ref()
                     .unwrap()
-                    .get_image_memory_requirements(img)
+                    .get_image_memory_requirements(_img)
                     .size
             };
 
-            let _surfbuf = SurfaceIMGBuffer::default().build_img(img);
+            let _surfbuf = SurfaceIMGBuffer::default().build_img(_img);
             let mut _buf: DeviceBuffer<SurfaceIMGBuffer> =
                 DeviceBuffer::<SurfaceIMGBuffer>::default()
                     .build_buffer(_surfbuf)
@@ -1874,7 +1923,7 @@ pub mod env {
 
             bind_cmdslicce.update_cbib(_device_buf.buffer_ref().unwrap().len());
 
-            bind_cmdslicce.cmd_attachment.index_current_cmd_buffers = datum
+            bind_cmdslicce.cmd_attachment.index_binding_cmd_buffers = datum
                 .alloc_data(_device_buf, Some(bind_cmdslicce.id))
                 .index();
 

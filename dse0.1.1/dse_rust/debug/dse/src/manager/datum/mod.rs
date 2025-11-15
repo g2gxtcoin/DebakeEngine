@@ -1,5 +1,5 @@
 #[cfg(feature = "config_DATUM_DEFAULT_CAPACITY_0")]
-static DATUM_DEFAULT_CAPACITY: usize = 0;
+static DATUM_DEFAULT_CAPACITY: usize =  0;
 
 #[cfg(feature = "config_DATUM_DEFAULT_CAPACITY_4")]
 static DATUM_DEFAULT_CAPACITY: usize = 4;

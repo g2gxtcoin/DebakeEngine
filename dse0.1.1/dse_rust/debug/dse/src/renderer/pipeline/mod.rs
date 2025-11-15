@@ -11,7 +11,7 @@ pub mod env {
         self, PipelineLayoutCreateInfo, PipelineMultisampleStateCreateInfo, SubpassDescription,
     };
 
-    use crate::{________________dev_stop________________, dev_dbg, renderer::cfg};
+    use crate::{________________dev_break________________, dev_dbg, renderer::cfg};
 
     use crate::{
         manager::datum::env::Datum, send2logger_dev, shader::env::ShaderModuleD,
@@ -110,6 +110,34 @@ pub mod env {
     where
         Self: Default,
     {
+        fn subpass_dependencies_ref(&self) -> Result<&Vec<vk::SubpassDependency>, ()> {
+            return Err(crate::send2logger_dev!(
+                crate::log::code::TYPE_TRAIT_ERROR
+                    | crate::log::code::CONDI_UNDEFINE_TRAIT_MEM
+                    | crate::log::code::FILE_RENDERER_PIPELINE
+                    | crate::log::LogCodeD::new()
+                        .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                        .get_code()
+                    | crate::log::LogCodeD::new()
+                        .encode(0 as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
+                        .get_code()
+            ));
+        }
+
+        fn subpass_dependencies_mut(&mut self) -> Result<&mut Vec<vk::SubpassDependency>, ()> {
+            return Err(crate::send2logger_dev!(
+                crate::log::code::TYPE_TRAIT_ERROR
+                    | crate::log::code::CONDI_UNDEFINE_TRAIT_MEM
+                    | crate::log::code::FILE_RENDERER_PIPELINE
+                    | crate::log::LogCodeD::new()
+                        .encode(line!() as u128, crate::log::LogPartFlag::LOGGER_PART_LINE)
+                        .get_code()
+                    | crate::log::LogCodeD::new()
+                        .encode(0 as u128, crate::log::LogPartFlag::LOGGER_PART_EXE_ID)
+                        .get_code()
+            ));
+        }
+
         fn pass_ref(&self) -> Result<&vk::RenderPass, ()> {
             return Err(crate::send2logger_dev!(
                 crate::log::code::TYPE_TRAIT_ERROR
@@ -365,9 +393,9 @@ pub mod env {
             viewport_state: Some(PSO::DEFAULT_VIEWPORT_STATE),
             rasterization_state: Some(PSO::DEFAULT_RASTERIZATION_STATE),
             multisample_state: Some(PSO::DEFAULT_MULTISAMPLE_STATE),
-            depth_stencil_state: Some(PSO::DEFAULT_DEPTH_STENCIL),
-            color_blend_state: Some(PSO::DEFAULT_COLOR_BLEND),
-            renderpass_info: Some(PSO::DEFAULT_RENDER_PASS),
+            depth_stencil_state: Some(PSO::DEFAULT_DEPTH_STENCIL_STATE),
+            color_blend_state: Some(PSO::DEFAULT_COLOR_BLEND_STATE),
+            renderpass_info: Some(PSO::DEFAULT_RENDER_SURF_PASS),
         };
     }
 
@@ -398,6 +426,7 @@ pub mod env {
         blend_attachments: Vec<vk::PipelineColorBlendAttachmentState>,
         sample_masks: Vec<vk::SampleMask>,
         subpass_description: Vec<vk::SubpassDescription>,
+        subpass_dependency: Vec<vk::SubpassDependency>,
         main_pass: Option<vk::RenderPass>,
     }
 
@@ -798,9 +827,17 @@ pub mod env {
             return self;
         }
 
-        pub fn build_push_subpass(mut self, din: vk::SubpassDescription) -> Self {
+        pub fn build_push_subpass(
+            mut self,
+            desciption_in: vk::SubpassDescription,
+            dependency_in: vk::SubpassDependency,
+        ) -> Self {
             match self.components.subpass_descriptions_mut() {
-                Ok(val) => val.push(din),
+                Ok(val) => val.push(desciption_in),
+                Err(_) => {}
+            }
+            match self.components.subpass_dependencies_mut() {
+                Ok(val) => val.push(dependency_in),
                 Err(_) => {}
             }
             match self.states.renderpass_info_mut() {
@@ -808,6 +845,10 @@ pub mod env {
                     val.subpass_count =
                         self.components.subpass_descriptions_mut().unwrap().len() as u32;
                     val.p_subpasses = self.components.subpass_descriptions_ref().unwrap().as_ptr();
+                    val.dependency_count =
+                        self.components.subpass_dependencies_mut().unwrap().len() as u32;
+                    val.p_dependencies =
+                        self.components.subpass_dependencies_ref().unwrap().as_ptr();
                 }
                 None => {}
             }
@@ -954,8 +995,7 @@ pub mod env {
 
         pub fn build_push_shader_stages(mut self, sin: &mut Datum<ShaderModuleD>) -> Self {
             for si in sin.vec_mut() {
-                self.shader_stages
-                    .push(si.pipe_stage_info().unwrap());
+                self.shader_stages.push(si.pipe_stage_info().unwrap());
             }
 
             return self;
@@ -1116,6 +1156,14 @@ pub mod env {
     }
 
     impl PCOTrait for GraphicPipeLinePCO {
+        fn subpass_dependencies_ref(&self) -> Result<&Vec<vk::SubpassDependency>, ()> {
+            return Ok(&self.subpass_dependency);
+        }
+
+        fn subpass_dependencies_mut(&mut self) -> Result<&mut Vec<vk::SubpassDependency>, ()> {
+            return Ok(&mut self.subpass_dependency);
+        }
+
         fn pass_ref(&self) -> Result<&vk::RenderPass, ()> {
             return Ok(self.main_pass.as_ref().unwrap());
         }
